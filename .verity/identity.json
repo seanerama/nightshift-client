@@ -1,0 +1,8 @@
+{
+  "version": "1.0",
+  "name": "Nightshift Client",
+  "slug": "nightshift-client",
+  "owner": "seanerama",
+  "image_prefix": "ghcr.io/seanerama/nightshift-client",
+  "locked_at": "2026-07-27T19:50:49.407Z"
+}
