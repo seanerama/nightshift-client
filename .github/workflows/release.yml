@@ -1,0 +1,118 @@
+name: Release
+# Deploy spine (ADR 0005): tag vX.Y.Z → EAS cloud build (Android APK,
+# production profile) → APK attached to the GitHub Release for that tag →
+# operator sideloads it onto the device. Operators: read docs/release-runbook.md.
+#
+# Triggers:
+#   - push of a v* tag: builds and publishes a GitHub Release with the APK.
+#   - workflow_dispatch: exercises the exact same build path from any ref, but
+#     publishes the APK as a *workflow artifact* instead of a release. This is
+#     deliberate: manual pipeline tests must not pollute the tag/release
+#     history. Download the APK from the run's Artifacts section.
+#
+# One-time operator setup (details in docs/release-runbook.md):
+#   1. `npx eas-cli init` — links the Expo project; commits extra.eas.projectId
+#      into app.json (arrives in a follow-up PR).
+#   2. EXPO_TOKEN — repo Actions secret (expo.dev → Account settings → Access
+#      tokens, then `gh secret set EXPO_TOKEN`).
+# Until both exist, this workflow fails fast in the preflight step below.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+# contents: write is required by `gh release create` / `gh release upload` to
+# publish the APK on the tag's release. Nothing else is granted.
+permissions:
+  contents: write
+
+# One release run at a time per ref; never cancel a build already in flight.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  android-apk:
+    runs-on: ubuntu-latest
+    steps:
+      # Fail fast — before checkout, npm ci, or any EAS build minutes — if the
+      # repo secret is missing. This is the expected first-run failure mode
+      # until the one-time setup is done.
+      - name: Preflight — EXPO_TOKEN present
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "${EXPO_TOKEN}" ]; then
+            echo "::error::EXPO_TOKEN secret is not set on this repo. One-time setup: create an access token at expo.dev (Account settings → Access tokens), then run: gh secret set EXPO_TOKEN. See docs/release-runbook.md."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # Official Expo action: installs a pinned eas-cli and authenticates it
+      # with EXPO_TOKEN — the standard non-interactive CI auth path.
+      - name: Set up EAS CLI
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: 16.x
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      # Cloud build on EAS. --wait blocks until the build finishes (queue time
+      # included); --json makes stdout a machine-readable array of build
+      # records while human logs go to stderr.
+      - name: EAS build — Android APK, production profile
+        run: eas build --platform android --profile production --non-interactive --wait --json > build.json
+
+      # jq -e fails the step if the field is null/missing (e.g. build errored
+      # without producing an artifact), instead of downloading garbage.
+      - name: Extract artifact URL
+        id: artifact
+        run: |
+          url="$(jq -er '.[0].artifacts.buildUrl' build.json)"
+          echo "url=${url}" >> "$GITHUB_OUTPUT"
+
+      # Tag runs name the APK after the tag (v1.2.3 → nightshift-client-v1.2.3.apk);
+      # manual dispatch runs are named after the run number.
+      - name: Download APK
+        env:
+          ARTIFACT_URL: ${{ steps.artifact.outputs.url }}
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            apk="nightshift-client-${GITHUB_REF_NAME}.apk"
+          else
+            apk="nightshift-client-manual-${GITHUB_RUN_NUMBER}.apk"
+          fi
+          curl -fsSL --retry 3 -o "${apk}" "${ARTIFACT_URL}"
+          ls -l "${apk}"
+          echo "APK_NAME=${apk}" >> "$GITHUB_ENV"
+
+      # Tag runs: create the GitHub Release for the tag with auto-generated
+      # notes and attach the APK. On a re-run the release already exists, so
+      # just replace the asset (--clobber) instead of failing.
+      - name: Publish GitHub Release (tag runs)
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" "${APK_NAME}" --repo "${GITHUB_REPOSITORY}" --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" "${APK_NAME}" --repo "${GITHUB_REPOSITORY}" --verify-tag --generate-notes
+          fi
+
+      # Dispatch runs: no tag → no release; keep the APK as a workflow
+      # artifact on the run instead (see the trigger comment at the top).
+      - name: Upload APK as workflow artifact (manual runs)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APK_NAME }}
+          path: ${{ env.APK_NAME }}
+          if-no-files-found: error

@@ -4,6 +4,7 @@
     "includes": [
       "src/**",
       "test/**",
+      "scripts/**",
       "*.json",
       "*.js",
       "!**/node_modules",
