@@ -1,14 +1,14 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 /**
- * Stage-1 placeholder. Each tab renders this until its real screen lands
- * (Connections → stage 2, Chat → stages 3-4, Apps → stage 6).
+ * Placeholder for tabs whose real screen has not landed yet (Chat → stage 4,
+ * Apps → stage 5). Stage 3 adds capability-gating subtitles.
  */
-export function PlaceholderScreen({ title }: { title: string }) {
+export function PlaceholderScreen({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>{title}</Text>
-      <Text style={styles.subtitle}>Coming in a later stage.</Text>
+      <Text style={styles.subtitle}>{subtitle ?? 'Coming in a later stage.'}</Text>
     </View>
   );
 }
