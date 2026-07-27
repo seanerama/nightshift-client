@@ -2,6 +2,7 @@ name: CI
 # Nightshift Client — hygiene gate (structure + secret-scan, required checks on
 # main; do not rename) plus the stage-1 toolchain gates: typecheck, lint, unit
 # tests, and the mock-agent integration round-trip (contracts/app-ingress.md).
+# Stage 2 adds workflows-lint: static validation of the release pipeline.
 on:
   pull_request:
   push:
@@ -63,6 +64,23 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+  workflows-lint:
+    # Stage-2 gate: the release pipeline (release.yml + eas.json) cannot run
+    # end-to-end in CI without EXPO_TOKEN, so validate it statically instead —
+    # actionlint over every workflow file, plus assertions that eas.json keeps
+    # the shape release.yml depends on (production profile → Android APK).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: actionlint
+        uses: docker://rhysd/actionlint:1.7.7
+        with:
+          args: -color
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Release config assertions (eas.json)
+        run: npm run check:release-config
   integration:
     # Boots the mock agent shipped by agent-app-contract@v1.0.0 and runs the
     # API client against it (manifest + health round-trip).
