@@ -5,6 +5,37 @@ dist/
 .env
 .env.*
 !.env.*.example
+
+# Expo
+.expo/
+web-build/
+expo-env.d.ts
+
+# Native artifacts (managed workflow — never committed)
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+/ios
+/android
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# local env files
+.env*.local
+
+# typescript
+*.tsbuildinfo
 # Verity's derived state cache — never authoritative (framework-spec §5)
 .verity-cache/
 # Per-app deployment access (host + credential locations) — shared out-of-band,
