@@ -83,8 +83,28 @@ export const createDurableChat = (options: DurableChatOptions): DurableChat => {
     return storePromise;
   };
 
-  /** Highest cursor already persisted — avoids rewriting on replayed events. */
+  // ---------------------------------------------------------------------
+  // Cursor safety invariant: the DISK cursor must never point past an event
+  // whose item row failed to persist. Resume is strictly-after the cursor,
+  // so cursor-ahead-of-a-missing-row would be a PERMANENT silent gap in
+  // durable history; cursor-behind is always safe (catch-up refetches and
+  // reducer/OR-IGNORE dedup absorb the replay). Mechanics:
+  // - `persistedCursor` mirrors DISK truth only — it is set after a
+  //   setLastEventId succeeds, never optimistically, so a failed cursor
+  //   write is retried on the next advance instead of being suppressed.
+  // - Each event is ONE chain op: item write(s) first, then the cursor
+  //   advance — the cursor moves only after the rows it vouches for exist.
+  // - `cursorCeiling` freezes advances across LATER events too: if the item
+  //   write for event N fails, no cursor value ≥ N is ever persisted this
+  //   session (later successful appends land as rows but cannot lift the
+  //   ceiling). After restart, catch-up resumes from < N and re-fetches the
+  //   gap — the missing row lands, duplicates are ignored: self-healing.
+  // ---------------------------------------------------------------------
+  /** Highest cursor value actually ON DISK (null = none/unknown). */
   let persistedCursor: number | null = null;
+  /** Max cursor value allowed to persist; lowered by item-write failures. */
+  let cursorCeiling: number = Number.POSITIVE_INFINITY;
+
   /** Serialized write chain: transitions land in dispatch order. */
   let tail: Promise<void> = Promise.resolve();
   const run = (op: (store: ChatStore) => Promise<void>): Promise<void> => {
@@ -101,11 +121,43 @@ export const createDurableChat = (options: DurableChatOptions): DurableChat => {
     }
   };
 
+  /** Persist `min(requested, ceiling)` if it advances the disk cursor.
+   * `persistedCursor` moves only on write SUCCESS (disk truth). */
+  const writeCursorUpTo = async (store: ChatStore, requested: number): Promise<void> => {
+    const target = Math.min(requested, cursorCeiling);
+    if (target < 0) return;
+    if (persistedCursor !== null && target <= persistedCursor) return;
+    await store.setLastEventId(connectionId, target);
+    persistedCursor = target;
+  };
+
+  /** ONE op per event: item write(s), THEN the cursor advance. An item-write
+   * failure lowers the ceiling and skips the advance entirely. */
+  const persistEvent = (
+    eventId: number,
+    itemWrites: ((store: ChatStore) => Promise<void>) | null,
+  ): void => {
+    void run(async (store) => {
+      if (itemWrites !== null) {
+        try {
+          await itemWrites(store);
+        } catch {
+          // The row this event vouches for is NOT on disk: freeze the
+          // cursor strictly below it for the rest of the session.
+          cursorCeiling = Math.min(cursorCeiling, eventId - 1);
+          return;
+        }
+      }
+      await writeCursorUpTo(store, eventId);
+    });
+  };
+
   const saveCursor = (lastEventId: number | null): void => {
     if (lastEventId === null) return;
-    if (persistedCursor !== null && lastEventId <= persistedCursor) return;
-    persistedCursor = lastEventId;
-    void run((store) => store.setLastEventId(connectionId, lastEventId));
+    // Runs on the SAME chain, i.e. after every already-enqueued per-event
+    // op — so the ceiling clamp inside writeCursorUpTo reflects any item
+    // failure among the events this raw cursor covers.
+    void run((store) => writeCursorUpTo(store, lastEventId));
   };
 
   const persistUserItem = (state: TranscriptState, messageId: string): void => {
@@ -132,21 +184,29 @@ export const createDurableChat = (options: DurableChatOptions): DurableChat => {
         // Replay of an already-applied event (resume overlap / re-paged
         // catch-up): the reducer no-opped, so must we.
         if (prev.seenEventIds.has(envelope.id)) return;
-        saveCursor(envelope.id);
         if (envelope.type === 'ack') {
           const messageId = envelope.payload.messageId;
-          if (typeof messageId === 'string') {
-            persistUserItem(next, messageId);
-            void run((store) => store.dequeue(connectionId, messageId));
+          if (typeof messageId !== 'string') {
+            persistEvent(envelope.id, null); // nothing to vouch for
+            return;
           }
+          const item = findUserItem(next, messageId);
+          const row = item === undefined ? null : userItemToRow(connectionId, item);
+          persistEvent(envelope.id, async (store) => {
+            if (row !== null) await store.upsertUserItem(row);
+            await store.dequeue(connectionId, messageId);
+          });
           return;
         }
-        // reply / notice (unknown types add nothing to items): persist the
-        // appended agent item, if the reducer accepted the payload.
+        // reply / notice: persist the appended agent item (if the reducer
+        // accepted the payload), then the cursor — same op. Unknown or
+        // malformed events add no row, so a cursor-only advance is safe.
         const last = next.items[next.items.length - 1];
         if (next.items.length > prev.items.length && last !== undefined && last.kind === 'agent') {
           const row = agentItemToRow(connectionId, last);
-          void run((store) => store.appendAgentItem(row));
+          persistEvent(envelope.id, (store) => store.appendAgentItem(row));
+        } else {
+          persistEvent(envelope.id, null);
         }
         return;
       }

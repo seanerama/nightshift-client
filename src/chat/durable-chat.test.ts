@@ -6,6 +6,8 @@
  */
 
 import type { EventEnvelope } from 'agent-app-contract/types';
+import type { OutboxPage } from '../api/client';
+import { runCatchUp } from './catch-up';
 import type { ChatStore } from './chat-store';
 import { createDurableChat, type DurableChat } from './durable-chat';
 import { type ChatStoreBacking, createChatStoreBacking, MemoryChatStore } from './memory';
@@ -27,8 +29,8 @@ const envelope = (id: number, type: string, payload: Record<string, unknown>): E
 });
 
 /** The production wiring in miniature: pure reducer + subscriber. */
-const makeSession = (durable: DurableChat) => {
-  let state: TranscriptState = emptyTranscript;
+const makeSession = (durable: DurableChat, initial: TranscriptState = emptyTranscript) => {
+  let state: TranscriptState = initial;
   return {
     apply(action: TranscriptAction) {
       const prev = state;
@@ -324,5 +326,155 @@ describe('token material never reaches persistence (stage-3 invariant)', () => {
     expect(serialized.toLowerCase()).not.toContain('token');
     expect(serialized.toLowerCase()).not.toContain('bearer');
     expect(serialized.toLowerCase()).not.toContain('authorization');
+  });
+});
+
+describe('the persisted cursor can never outrun the persisted transcript (review finding)', () => {
+  // The asymmetry these tests pin down: a cursor BEHIND the rows on disk is
+  // always safe (resume/catch-up replays, dedup + OR IGNORE absorb it); a
+  // cursor AHEAD of a missing row is a permanent silent gap, because resume
+  // is strictly-after the cursor. Failures may therefore hold the cursor
+  // back, but must never let it advance past an event whose row write failed.
+
+  const replyEnvelope = (id: number): EventEnvelope =>
+    envelope(id, 'reply', { schema: 1, text: `reply ${id}`, files: [] });
+
+  const applyReply = (session: ReturnType<typeof makeSession>, id: number) =>
+    session.apply({ type: 'event', envelope: replyEnvelope(id) });
+
+  /** Explicit delegation (interface methods, so no prototype spread). */
+  const delegating = (inner: ChatStore): ChatStore => ({
+    loadTranscript: (c) => inner.loadTranscript(c),
+    upsertUserItem: (r) => inner.upsertUserItem(r),
+    appendAgentItem: (r) => inner.appendAgentItem(r),
+    getLastEventId: (c) => inner.getLastEventId(c),
+    setLastEventId: (c, id) => inner.setLastEventId(c, id),
+    listQueue: (c) => inner.listQueue(c),
+    enqueue: (r) => inner.enqueue(r),
+    dequeue: (c, m) => inner.dequeue(c, m),
+  });
+
+  const makeDurableWithStore = (store: ChatStore) =>
+    createDurableChat({ enabled: true, connectionId: CID, storeFactory: async () => store });
+
+  const diskEventIds = async (backing: ChatStoreBacking): Promise<number[]> =>
+    (await new MemoryChatStore(backing).loadTranscript(CID)).flatMap((r) =>
+      r.eventId === null ? [] : [r.eventId],
+    );
+
+  it('an append failure freezes the cursor below the failed event — later successes and raw stream saves cannot lift it past the gap', async () => {
+    const backing = createChatStoreBacking();
+    const inner = new MemoryChatStore(backing);
+    const store = delegating(inner);
+    store.appendAgentItem = async (row) => {
+      if (row.eventId === 2) throw new Error('disk full');
+      return inner.appendAgentItem(row);
+    };
+    const durable = makeDurableWithStore(store);
+    const session = makeSession(durable);
+
+    applyReply(session, 1); // persists: row 1 + cursor 1
+    applyReply(session, 2); // row write FAILS → cursor must not reach 2
+    applyReply(session, 3); // row 3 lands, but the gap at 2 pins the cursor
+    durable.saveCursor(5); // raw stream cursor (stream-stop path) — clamped
+    await durable.flush();
+
+    // Cursor stays strictly below the missing row…
+    expect(await inner.getLastEventId(CID)).toBe(1);
+    // …while the disk may legitimately hold rows beyond it (behind-is-safe).
+    expect(await diskEventIds(backing)).toEqual([1, 3]);
+  });
+
+  it('after a restart, catch-up from the held-back cursor re-fetches the gap and the missing row lands (self-healing)', async () => {
+    // --- Life 1: same failure as above; disk ends with rows [1, 3], cursor 1.
+    const backing = createChatStoreBacking();
+    const inner1 = new MemoryChatStore(backing);
+    const store1 = delegating(inner1);
+    store1.appendAgentItem = async (row) => {
+      if (row.eventId === 2) throw new Error('disk full');
+      return inner1.appendAgentItem(row);
+    };
+    const durable1 = makeDurableWithStore(store1);
+    const session1 = makeSession(durable1);
+    applyReply(session1, 1);
+    applyReply(session1, 2); // lost this session
+    applyReply(session1, 3);
+    await durable1.flush();
+
+    // --- Life 2: healthy store over the same backing.
+    const durable2 = makeDurable(backing);
+    const hydrated = await durable2.hydrate();
+    if (hydrated === null) throw new Error('unreachable');
+    expect(hydrated.lastEventId).toBe(1); // held back — NOT 3
+
+    // The agent's outbox still has everything after the cursor.
+    const outbox = [replyEnvelope(2), replyEnvelope(3)];
+    const fetchPage = async (after: number | null): Promise<OutboxPage> => ({
+      schema: 1,
+      events: outbox.filter((e) => e.id > (after ?? 0)),
+    });
+    const session2 = makeSession(durable2, hydrated.state);
+    const cursor = await runCatchUp({
+      after: hydrated.lastEventId,
+      fetchPage,
+      apply: (e) => session2.apply({ type: 'event', envelope: e }),
+    });
+    durable2.saveCursor(cursor);
+    await durable2.flush();
+
+    // The gap healed: row 2 is on disk now (3 was already there — its replay
+    // was an ignore-no-op), and only then does the cursor pass the gap.
+    expect(await diskEventIds(backing)).toEqual(expect.arrayContaining([1, 2, 3]));
+    expect(await new MemoryChatStore(backing).getLastEventId(CID)).toBe(3);
+    // In-memory state healed identically: event 2 exactly once.
+    const ids = session2.state.items.flatMap((i) => (i.kind === 'agent' ? [i.eventId] : []));
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toEqual(expect.arrayContaining([1, 2, 3]));
+  });
+
+  it('an ack whose row write fails also freezes the cursor (its user-row update is what it vouches for)', async () => {
+    const backing = createChatStoreBacking();
+    const inner = new MemoryChatStore(backing);
+    const store = delegating(inner);
+    store.upsertUserItem = async (row) => {
+      if (row.sendState === 'accepted') throw new Error('disk full'); // only the ack's write
+      return inner.upsertUserItem(row);
+    };
+    const durable = makeDurableWithStore(store);
+    const session = makeSession(durable);
+
+    session.apply({ type: 'send', messageId: 'm-1', text: 'x', at: 't0' }); // persists fine
+    session.apply({ type: 'event', envelope: envelope(5, 'ack', { messageId: 'm-1' }) }); // fails
+    applyReply(session, 6); // row 6 lands; cursor still may not reach the ack
+    await durable.flush();
+
+    const cursor = await inner.getLastEventId(CID);
+    expect(cursor).not.toBeNull();
+    expect(cursor as number).toBeLessThan(5); // restart will re-fetch ack 5 and heal
+    expect(await diskEventIds(backing)).toEqual([6]);
+  });
+
+  it('a failed cursor WRITE is retried on the next advance (bookkeeping mirrors disk, not intent)', async () => {
+    const backing = createChatStoreBacking();
+    const inner = new MemoryChatStore(backing);
+    const store = delegating(inner);
+    let failuresLeft = 1;
+    store.setLastEventId = async (c, id) => {
+      if (failuresLeft > 0) {
+        failuresLeft -= 1;
+        throw new Error('disk hiccup');
+      }
+      return inner.setLastEventId(c, id);
+    };
+    const durable = makeDurableWithStore(store);
+    const session = makeSession(durable);
+
+    applyReply(session, 1); // row lands; the cursor write itself fails
+    await durable.flush();
+    expect(await inner.getLastEventId(CID)).toBeNull(); // behind disk — safe
+
+    durable.saveCursor(1); // stream-stop path retries the SAME value
+    await durable.flush();
+    expect(await inner.getLastEventId(CID)).toBe(1);
   });
 });
