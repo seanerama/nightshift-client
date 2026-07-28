@@ -78,6 +78,51 @@ describe('optimistic send lifecycle', () => {
   });
 });
 
+describe('offline queue send states (stage 9)', () => {
+  it('send-queued parks a pending send as queued', () => {
+    const state = reduce([send('m-1'), { type: 'send-queued', messageId: 'm-1' }]);
+    expect(state.items).toMatchObject([{ kind: 'user', sendState: 'queued' }]);
+  });
+
+  it('send-queued never demotes accepted or failed items', () => {
+    const accepted = reduce([
+      send('m-1'),
+      { type: 'send-accepted', messageId: 'm-1' },
+      { type: 'send-queued', messageId: 'm-1' },
+    ]);
+    expect(accepted.items).toMatchObject([{ sendState: 'accepted' }]);
+
+    const failed = reduce([
+      send('m-1'),
+      { type: 'send-failed', messageId: 'm-1' },
+      { type: 'send-queued', messageId: 'm-1' },
+    ]);
+    expect(failed.items).toMatchObject([{ sendState: 'failed' }]);
+  });
+
+  it('a drain re-POST re-sends the queued item in place with the SAME messageId', () => {
+    const state = reduce([
+      send('m-1', 'offline text'),
+      { type: 'send-queued', messageId: 'm-1' },
+      send('m-1', 'offline text'), // drain re-POST — dedup key preserved
+    ]);
+    expect(state.items).toHaveLength(1);
+    expect(state.items[0]).toMatchObject({ messageId: 'm-1', sendState: 'sending' });
+  });
+
+  it('a queued item can be accepted directly (202 lost but the POST landed / catch-up ack)', () => {
+    const viaAction = reduce([
+      send('m-1'),
+      { type: 'send-queued', messageId: 'm-1' },
+      { type: 'send-accepted', messageId: 'm-1' },
+    ]);
+    expect(viaAction.items).toMatchObject([{ sendState: 'accepted' }]);
+
+    const viaAck = reduce([send('m-1'), { type: 'send-queued', messageId: 'm-1' }, ack(1, 'm-1')]);
+    expect(viaAck.items).toMatchObject([{ sendState: 'accepted' }]);
+  });
+});
+
 describe('agent events', () => {
   it('reply and notice append agent items in arrival order', () => {
     const state = reduce([

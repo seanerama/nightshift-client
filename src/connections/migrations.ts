@@ -41,6 +41,56 @@ export const CONNECTIONS_MIGRATIONS: readonly Migration[] = [
       )`,
     ],
   },
+  {
+    // Stage 9: transcript durability. Per-connection history, resume cursor,
+    // and offline compose queue. NO token columns anywhere (stage-3 invariant:
+    // tokens live in the secure-store vault only, never in sqlite).
+    version: 2,
+    statements: [
+      // `seq` is the insertion-order key; ordering is arrival order, exactly
+      // like the in-memory transcript. user rows carry message_id/send_state;
+      // agent rows carry event_id/event_type/files (JSON array of file ids).
+      `CREATE TABLE IF NOT EXISTS transcript_items (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        connection_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        message_id TEXT,
+        event_id INTEGER,
+        event_type TEXT,
+        text TEXT NOT NULL,
+        files TEXT,
+        send_state TEXT,
+        at TEXT NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS transcript_items_by_connection
+        ON transcript_items (connection_id, seq)`,
+      // Upsert keys: a user item is unique per (connection, messageId) — the
+      // contract dedup key; an agent item per (connection, eventId) — the
+      // outbox cursor. Partial: only rows of the matching kind carry the key.
+      `CREATE UNIQUE INDEX IF NOT EXISTS transcript_items_user_key
+        ON transcript_items (connection_id, message_id) WHERE message_id IS NOT NULL`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS transcript_items_agent_key
+        ON transcript_items (connection_id, event_id) WHERE event_id IS NOT NULL`,
+      // Persisted Last-Event-ID / ?after= cursor (one cursor concept —
+      // contract invariant 2), per connection.
+      `CREATE TABLE IF NOT EXISTS stream_cursors (
+        connection_id TEXT PRIMARY KEY NOT NULL,
+        last_event_id INTEGER NOT NULL
+      )`,
+      // Offline-composed messages awaiting drain. message_id is the contract
+      // dedup key, so re-POSTing on drain is at-least-once safe. attachments
+      // (JSON array of upload ids) is reserved for the attachments stage.
+      `CREATE TABLE IF NOT EXISTS compose_queue (
+        message_id TEXT PRIMARY KEY NOT NULL,
+        connection_id TEXT NOT NULL,
+        text TEXT NOT NULL,
+        attachments TEXT NOT NULL,
+        queued_at TEXT NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS compose_queue_by_connection
+        ON compose_queue (connection_id, queued_at)`,
+    ],
+  },
 ];
 
 export class MigrationError extends Error {

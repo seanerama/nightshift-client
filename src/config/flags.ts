@@ -24,3 +24,21 @@ export const resolveAppsTabEnabled = (extraValue: unknown, isDev: boolean): bool
   // never toward accidentally enabling in release.
   return isDev;
 };
+
+/**
+ * TRANSCRIPT_PERSISTENCE_ENABLED — stage-9 kill-switch for durable history,
+ * outbox catch-up, and the offline compose queue.
+ *
+ * Recorded planner DEVIATION from the default-OFF template: default is ON.
+ * The installed cohort is the single owner and config flips require a new APK
+ * anyway (sideload), so OFF-by-default would ship the release inert — this
+ * flag exists to KILL persistence in one config release if it misbehaves, not
+ * to dark-launch it. OFF restores stage-4 in-memory behavior exactly (no
+ * store reads or writes); migration v2 is NOT gated (additive schema is safe
+ * standing alone).
+ */
+export const resolveTranscriptPersistenceEnabled = (extraValue: unknown): boolean => {
+  // Only an explicit `false` kills the feature; absent or junk values fail
+  // toward the default — which for THIS flag is ON (deviation above).
+  return extraValue !== false;
+};
