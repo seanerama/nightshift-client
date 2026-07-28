@@ -3,13 +3,13 @@
 > Runtime/ops truth (framework-spec §4.6). Generated from `.verity/runtime.json`
 > by the Release/Deploy Operator. Secret LOCATIONS only — never values.
 
-**Live version:** 0.1.3
+**Live version:** 0.2.0
 **Deployed at:** (not deployed)
-**Rollback from:** v0.1.2 APK on its GitHub Release (config-only delta)
+**Rollback from:** v0.1.3 APK on its GitHub Release (migration v2 is additive — rollback-safe)
 
 ## Environments
-- **release:** {"tag":"v0.1.3","artifact":"nightshift-client-v0.1.3.apk @ GitHub Release v0.1.3 — manifest-verified cleartext fix"}
-- **device:** {"installed":"v0.1.3 — FULL smoke PASS: connections (green dot), chat SSE round-trip, Apps ui:// resource rendered in sandbox"}
+- **release:** {"tag":"v0.2.0","artifact":"nightshift-client-v0.2.0.apk @ GitHub Release v0.2.0 — transcript durability (stage 9)"}
+- **device:** {"installed":"pending — v0.2.0 sideload + durability smoke (docs/ui-smoke/stage-9-durability.md)"}
 
 ## Secret locations (names + on-disk locations only, never values)
 - EXPO_TOKEN @ GitHub Actions secrets (seanerama/nightshift-client); Expo account seanmahoneyai; EAS-managed Android keystore on Expo servers (backup: npx eas-cli credentials -p android)

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0
+
+### Chores
+- full device smoke PASS on v0.1.3 (Apps render confirmed) (#22)
+- device smoke PASS on v0.1.3 (connections + chat) (#21)
+- record v0.1.3 release truth (manifest-verified cleartext fix) (#20)
+
+### Other
+- [stage 9] Transcript durability: SQLite history, outbox catch-up, offline queue (#25)
+- docs: stage 9 spec + assessment — transcript durability (refs #23) (#24)
+
 ## 0.1.3
 
 ### Fixes
