@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0
+
+### Chores
+- switcher smoke PASS on v0.3.0 (two agents) (#32)
+- record v0.3.0 release truth (multi-agent switcher) (#31)
+
+### Other
+- [stage 11] Live Apps refresh: reconciling resource list, pull-to-refresh, open-resource safety (#35)
+
 ## 0.3.0
 
 ### Features
