@@ -8,7 +8,7 @@
       "artifact": "nightshift-client-v0.1.3.apk @ GitHub Release v0.1.3 — manifest-verified cleartext fix"
     },
     "device": {
-      "installed": "v0.1.3 — smoke PASS: connections (green dot), chat round-trip over SSE; Apps render check pending"
+      "installed": "v0.1.3 — FULL smoke PASS: connections (green dot), chat SSE round-trip, Apps ui:// resource rendered in sandbox"
     }
   },
   "secret_locations": [
