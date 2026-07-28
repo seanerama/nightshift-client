@@ -44,11 +44,19 @@ if (!app.expo?.android?.package) fail('app.json expo.android.package missing');
 
 // Agents are private-network http (tailnet/LAN — contract auth is bearer, the
 // tailnet path is WireGuard-encrypted). Android kills cleartext app traffic
-// unless this is declared; without it the release APK cannot reach ANY agent
-// (issue #16, stage 7). If a public-endpoint capability ever ships, replace
+// unless the manifest declares it; without it the release APK cannot reach ANY
+// agent (issue #16). Stage-7 lesson: `expo.android.usesCleartextTraffic` is
+// NOT an Expo config field and prebuild ignores it silently — the working
+// mechanism is the expo-build-properties plugin (manifest-verified in stage 8
+// via `expo prebuild`). If a public-endpoint capability ever ships, replace
 // with a scoped networkSecurityConfig instead of dropping the assertion.
-if (app.expo?.android?.usesCleartextTraffic !== true) {
-  fail('app.json expo.android.usesCleartextTraffic must be true — issue #16');
+const buildProps = (app.expo?.plugins ?? []).find(
+  (entry) => Array.isArray(entry) && entry[0] === 'expo-build-properties',
+);
+if (buildProps?.[1]?.android?.usesCleartextTraffic !== true) {
+  fail(
+    'expo-build-properties plugin must set android.usesCleartextTraffic true — issue #16 (the bare expo.android field is silently ignored)',
+  );
 }
 
 console.log('check:release-config OK');
