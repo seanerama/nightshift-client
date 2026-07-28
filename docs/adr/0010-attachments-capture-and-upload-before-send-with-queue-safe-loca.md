@@ -77,9 +77,10 @@ would drain with a broken attachment, silently.
 
 ## Consequences
 
-- **Two new dependencies**: `expo-image-picker` (camera + library) and
-  `expo-document-picker`. Both are Expo-managed modules, consistent with
-  ADR 0001. Camera and media permissions must be declared and requested, which
+- **Three new dependencies**: `expo-image-picker` (camera + library),
+  `expo-document-picker`, and **`expo-file-system`** — the last is what makes
+  the offline copy above possible and was undercounted as "two" when this ADR
+  was first written. All are Expo-managed modules, consistent with ADR 0001. Camera and media permissions must be declared and requested, which
   is new permission surface for this app and a release-config check worth
   adding.
 - **A new client-owned local-file lifecycle**: copies live in app storage until

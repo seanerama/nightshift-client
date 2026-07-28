@@ -29,8 +29,14 @@ also net-new.
   surface-raised, border, text, text-muted, accent, danger, warn) resolved for
   light and dark, consumed through a hook. Every one of the 49 literals moves to
   a token. Colour stops being spelled inline anywhere in `src/`.
-- **Three-way setting, persisted:** System (default) / Light / Dark, stored with
-  the existing app-level persistence, applied instantly without a restart.
+- **Three-way setting, persisted:** System (default) / Light / Dark, applied
+  instantly without a restart. **There is no app-level persistence in this repo
+  to store it in** — the only stores are the connections SQLite DB and
+  `expo-secure-store` for tokens, and async-storage is not a dependency. So this
+  adds an **additive migration v4** creating an `app_settings` key/value table on
+  the existing DB, using the established append-only runner and its additive
+  guard (the shape stage 10 used for v3). No storage dependency is added, and a
+  non-secret does not go in the secure store.
   "System" keeps today's `useColorScheme` behaviour, so the default is a no-op
   for anyone who does not open Settings.
 - **The setting drives `ui/theme` too.** The scheme pushed to resource HTML is

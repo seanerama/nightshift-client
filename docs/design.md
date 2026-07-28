@@ -271,9 +271,13 @@ requests are owner-originated.
 Stage 0 is long done; the spine is shipped through v0.4.0. Three stages, in
 dependency order:
 
-**A — Shell polish (no contract, no new deps).**
+**A — Shell polish (no contract change; adds `expo-clipboard` + migration v4).**
 1. Tab order: Chat, Apps, Connections, Settings — with Chat as the landing
-   screen (`initialRouteName`, since `index` is Connections today).
+   screen. Verified during planning: expo-router's `Tabs` **omits**
+   `initialRouteName`, so this is a **file rename** (`chat.tsx`→`index.tsx`,
+   `index.tsx`→`connections.tsx`), and `header-identity.tsx`'s
+   `router.navigate('/')` must become `/connections` or it silently lands on
+   Chat.
 2. Theme tokens: sweep all 49 literals into a token module; Light/Dark/System
    setting in a real Settings screen; resolved scheme feeds `ui/theme`.
 3. Long-press a chat message → copy.
