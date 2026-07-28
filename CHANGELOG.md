@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.3
+
+### Fixes
+- cleartext via expo-build-properties, manifest-verified (#16) (#19)
+
+### Chores
+- record v0.1.2 release truth (cleartext fix release) (#18)
+
 ## 0.1.2
 
 ### Fixes
