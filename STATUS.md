@@ -9,7 +9,7 @@
 
 ## Environments
 - **release:** {"tag":"v0.2.0","artifact":"nightshift-client-v0.2.0.apk @ GitHub Release v0.2.0 — transcript durability (stage 9)"}
-- **device:** {"installed":"pending — v0.2.0 sideload + durability smoke (docs/ui-smoke/stage-9-durability.md)"}
+- **device:** {"installed":"v0.2.0 — durability smoke PASS: history survives force-kill/restart, offline compose queue drains on reconnect"}
 
 ## Secret locations (names + on-disk locations only, never values)
 - EXPO_TOKEN @ GitHub Actions secrets (seanerama/nightshift-client); Expo account seanmahoneyai; EAS-managed Android keystore on Expo servers (backup: npx eas-cli credentials -p android)
