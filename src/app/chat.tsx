@@ -8,7 +8,7 @@
  */
 
 import { FlashList } from '@shopify/flash-list';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -31,6 +31,20 @@ export default function ChatScreen() {
   const gate = gateCapability(active, CAPABILITY_CHAT);
   const { items, streamState, send, retry } = useChatSession(gate === 'available' ? active : null);
   const [draft, setDraft] = useState('');
+  // Issue #13 audit: same defect class as the connection form. Under SDK 57
+  // edge-to-edge (forced on Android 15+) the window does not resize for the
+  // keyboard, so `behavior=undefined` on Android did nothing and the keyboard
+  // covered the composer. "padding" needs the screen's real distance from the
+  // window top: KeyboardAvoidingView measures its own frame parent-relative,
+  // which misses the tabs header above this screen — measured here and passed
+  // as keyboardVerticalOffset.
+  const containerRef = useRef<View>(null);
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
+  const measureOffset = () => {
+    containerRef.current?.measureInWindow((_x, y) => {
+      setKeyboardOffset((prev) => (prev === y ? prev : y));
+    });
+  };
 
   if (gate === 'no-active-connection') {
     return (
@@ -50,48 +64,53 @@ export default function ChatScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <StreamBanner state={streamState} />
-      <FlashList
-        data={items as TranscriptItem[]}
-        keyExtractor={transcriptItemKey}
-        renderItem={({ item }) => <TranscriptRow item={item} onRetry={retry} />}
-        // Chat layout: chronological data, rendering anchored at the bottom so
-        // the newest message sits above the composer (FlashList v2's
-        // replacement for the v1 `inverted` pattern).
-        maintainVisibleContentPosition={{
-          autoscrollToBottomThreshold: 0.2,
-          startRenderingFromBottom: true,
-        }}
-        contentContainerStyle={styles.listContent}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyText}>Say hello — replies arrive over the event stream.</Text>
-          </View>
-        }
-      />
-      <View style={styles.composer}>
-        <TextInput
-          style={styles.input}
-          value={draft}
-          onChangeText={setDraft}
-          placeholder="Message the agent…"
-          multiline
-          testID="chat-input"
+    <View ref={containerRef} collapsable={false} style={styles.container} onLayout={measureOffset}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior="padding"
+        keyboardVerticalOffset={keyboardOffset}
+      >
+        <StreamBanner state={streamState} />
+        <FlashList
+          data={items as TranscriptItem[]}
+          keyExtractor={transcriptItemKey}
+          renderItem={({ item }) => <TranscriptRow item={item} onRetry={retry} />}
+          // Chat layout: chronological data, rendering anchored at the bottom so
+          // the newest message sits above the composer (FlashList v2's
+          // replacement for the v1 `inverted` pattern).
+          maintainVisibleContentPosition={{
+            autoscrollToBottomThreshold: 0.2,
+            startRenderingFromBottom: true,
+          }}
+          contentContainerStyle={styles.listContent}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>
+                Say hello — replies arrive over the event stream.
+              </Text>
+            </View>
+          }
         />
-        <Pressable
-          style={[styles.sendButton, !canSend && styles.sendButtonDisabled]}
-          onPress={onSend}
-          disabled={!canSend}
-          testID="chat-send"
-        >
-          <Text style={styles.sendButtonText}>Send</Text>
-        </Pressable>
-      </View>
-    </KeyboardAvoidingView>
+        <View style={styles.composer}>
+          <TextInput
+            style={styles.input}
+            value={draft}
+            onChangeText={setDraft}
+            placeholder="Message the agent…"
+            multiline
+            testID="chat-input"
+          />
+          <Pressable
+            style={[styles.sendButton, !canSend && styles.sendButtonDisabled]}
+            onPress={onSend}
+            disabled={!canSend}
+            testID="chat-send"
+          >
+            <Text style={styles.sendButtonText}>Send</Text>
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
