@@ -20,6 +20,8 @@ forms, custom views — is server-delivered; the app ships rarely.
 | [0003](adr/0003-chat-over-rest-sse-with-durable-outbox-tools-and-ui-over-mcp.md) | Chat = REST + SSE + durable outbox; tools/UI = MCP; files = REST |
 | [0004](adr/0004-webview-sandbox-no-token-in-webview-mediated-postmessage-bridge.md) | Per-resource sandboxed WebView; no token in WebView; mediated bridge; mandatory fallback |
 | [0005](adr/0005-releases-via-eas-cloud-builds-published-to-github-releases.md) | EAS cloud builds → APK on GitHub Releases (catalog method `eas-github-releases`) |
+| [0006](adr/0006-live-apps-refresh-via-pull-triggers-defer-push-to-an-additive-s.md) | Live Apps refresh: pull triggers now (no contract change); push deferred to an additive SSE event type |
+| [0007](adr/0007-rendered-resource-lifetime-is-decoupled-from-the-resource-list.md) | A list change never reloads or tears down a rendered resource |
 
 ## Frozen contracts
 
@@ -93,6 +95,106 @@ real job, with Webex still running untouched beside it.
 - No typing indicator with `relay()` latency → v1 UX target is Webex parity;
   streaming deliberately deferred.
 - WebView rigor is day-one (ADR 0004), not hardening.
+
+---
+
+# Addendum — Live Apps Refresh (2026-07-28)
+
+*Architect pass over the "Live Apps Refresh" feature brief, against the shipped
+v0.3.0 codebase. ADRs [0006](adr/0006-live-apps-refresh-via-pull-triggers-defer-push-to-an-additive-s.md)
+and [0007](adr/0007-rendered-resource-lifetime-is-decoupled-from-the-resource-list.md).*
+
+## Current behavior — verified, as the brief required
+
+`resources/list` is fetched by a `useEffect` in `src/app/apps.tsx` keyed on the
+active connection. It therefore runs:
+
+- when `AppsBrowser` first mounts — **the first visit to the Apps tab**, not at
+  connect time; and
+- again **only when the active connection changes**.
+
+Not on tab re-focus, not on reconnect, never mid-session. Each `load()` also
+re-runs the MCP `initialize` handshake. A manual **"Refresh" text button already
+exists** (`apps.tsx`). Two of its current behaviors are wrong for live refresh
+and change in this feature: a refresh **blanks the tab** to a loading
+placeholder, and a **failed refresh replaces the list with a `FallbackCard`**,
+destroying the last known good list.
+
+## The brief's internal conflict, and how it was resolved
+
+Requirement 1 (subscribe to `notifications/resources/list_changed`) is **not
+implementable under requirement 4** (no contract changes). app-ingress v1
+defines exactly one MCP route, `POST /app/v1/mcp`, request→response; there is no
+`GET /app/v1/mcp`, no `Mcp-Session-Id`, no SSE framing on the MCP endpoint, and
+the canonical mock agent has no server→client MCP channel. `src/mcp/client.ts`
+is stateless by design. **There is no MCP session to subscribe on.**
+
+Resolved by splitting along that line (ADR 0006) — the owner chose this:
+
+- **This stage (client-only, zero contract change):** the whole refresh engine,
+  driven by pull triggers.
+- **Follow-on stage (needs an additive upstream change):** genuine push, via a
+  new event type on the existing SSE stream rather than a new MCP channel.
+
+## Design of the refresh engine
+
+One code path, `refreshResources()`, shared by every trigger — present and
+future. The pieces:
+
+| Concern | Design |
+|---|---|
+| Triggers (this stage) | pull-to-refresh gesture (`RefreshControl`, **replacing** the text button); tab focus; foreground-gated poll reusing `shouldPoll(AppState, …)` from `src/connections/health.ts` |
+| Trigger (follow-on) | new SSE event type → same entry point, one new branch |
+| Debounce | coalesce bursts; overlapping refreshes collapse to one in-flight fetch |
+| Reconcile | additions appear, removals leave, version bumps update the list entry |
+| Failure | **last known list stays intact**; `FallbackCard` is reserved for the *initial* load, where there is no list to keep |
+| Open resource | untouched — pinned by an owned descriptor snapshot (ADR 0007) |
+| Vanished-while-open | non-blocking dismissible notice on next visit to the tab; never a modal |
+| Flag | rides the existing `APPS_TAB_ENABLED` — **no new flag** |
+
+The reconciliation, debounce, and failure-tolerance logic is the substantive and
+testable part, and it is **trigger-agnostic**: the follow-on push stage adds an
+event branch, not new refresh logic.
+
+## Contracts — unchanged
+
+`app-ingress` v1 and `ui-bridge` v1 are **untouched**; no new contract is cut.
+The sandbox, the allowlist derivation, and the `mcp-apps-ui` capability are
+unchanged — a refreshed list re-reads each resource's `_meta["ui/tools"]`
+exactly as a first load does. Deployment target is unchanged (ADR 0005).
+No drop-in catalog feature applies (`helper-bot` remains declined).
+
+## Owed upstream
+
+One small issue in `agent-app-contract`, tracked there, blocking neither stage:
+
+1. A **new event type** for "resources changed" on `GET /app/v1/events`
+   (additive — invariant 3 states the event-type set is additively extensible,
+   `type` is deliberately not an enum in `schemas/v1/event-envelope.json`, and
+   unknown types MUST be ignored), which the follow-on push stage consumes.
+   **Not** a reuse of `notice`: that type already carries a defined
+   reply-shaped payload, so overloading it would corrupt an existing shape
+   rather than extend the contract.
+2. A `--mutate-resources` mock-agent hook, so the live list-change case becomes
+   integration-testable. Until it exists, the integration case is covered by
+   pull-to-refresh against a restarted mock with different `--capabilities`.
+
+## Slice handed to `/verity:plan`
+
+Stage 0 is long since done — the spine is proven and shipped through v0.3.0.
+The thin slice for the next stage is:
+
+1. `refreshResources()` with debounce, reconciliation, and keep-last-list-on-
+   failure, unit-tested against a faked MCP client.
+2. Pull-to-refresh replacing the Refresh button; focus + foreground-poll
+   triggers.
+3. The ADR 0007 invariant enforced and unit-tested: open resource survives a
+   refresh that drops or bumps it; `ui.home` auto-open does not re-fire.
+4. Vanished-while-open notice.
+5. Suites green; UI smoke doc (`docs/ui-smoke/stage-11-live-apps.md`) recording
+   **which trigger fired**, so this stage is never mistaken for the push stage.
+
+The push stage follows once the upstream event-type extension lands.
 
 ## Handoff
 
