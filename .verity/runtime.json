@@ -1,14 +1,14 @@
 {
-  "version": "0.2.0",
+  "version": "0.3.0",
   "deployed_at": null,
-  "rollback_from": "v0.1.3 APK on its GitHub Release (migration v2 is additive — rollback-safe)",
+  "rollback_from": "v0.2.0 APK on its GitHub Release (migration v3 additive — rollback-safe)",
   "environments": {
     "release": {
-      "tag": "v0.2.0",
-      "artifact": "nightshift-client-v0.2.0.apk @ GitHub Release v0.2.0 — transcript durability (stage 9)"
+      "tag": "v0.3.0",
+      "artifact": "nightshift-client-v0.3.0.apk @ GitHub Release v0.3.0 — multi-agent switcher (stage 10)"
     },
     "device": {
-      "installed": "v0.2.0 — durability smoke PASS: history survives force-kill/restart, offline compose queue drains on reconnect"
+      "installed": "pending — v0.3.0 sideload + two-agent switcher smoke"
     }
   },
   "secret_locations": [

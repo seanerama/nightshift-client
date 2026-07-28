@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0
+
+### Features
+- multi-agent switcher — header identity, quick switch, per-connection personId (stage 10) (#30)
+
+### Chores
+- durability smoke PASS on v0.2.0 (#27)
+- record v0.2.0 release truth (transcript durability) (#26)
+
+### Other
+- docs: stage 10 spec + assessment — multi-agent switcher (refs #28) (#29)
+
 ## 0.2.0
 
 ### Chores
