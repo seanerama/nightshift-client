@@ -1,14 +1,14 @@
 {
-  "version": "0.1.1",
+  "version": "0.1.2",
   "deployed_at": null,
   "rollback_from": null,
   "environments": {
     "release": {
-      "tag": "v0.1.1",
-      "artifact": "nightshift-client-v0.1.1.apk @ GitHub Release v0.1.1"
+      "tag": "v0.1.2",
+      "artifact": "nightshift-client-v0.1.2.apk @ GitHub Release v0.1.2"
     },
     "device": {
-      "installed": "pending — v0.1.1 sideload + UI-smoke re-run (keyboard fix #13)"
+      "installed": "pending — v0.1.2 sideload + full smoke (fixes #13 UI, #16 cleartext)"
     }
   },
   "secret_locations": [

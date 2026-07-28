@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.2
+
+### Fixes
+- allow cleartext http to private-network agents (#16) (#17)
+
+### Chores
+- record v0.1.1 release truth (keyboard fix release) (#15)
+
 ## 0.1.1
 
 ### Chores
