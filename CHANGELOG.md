@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1
+
+### Chores
+- record v0.1.0 release truth (STATUS.md) (#12)
+
+### Other
+- [stage 6] Fix: soft keyboard covers connection form inputs (#14)
+
 ## 0.1.0
 
 ### Features
