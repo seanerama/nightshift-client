@@ -42,4 +42,13 @@ if (Object.values(eas.build).some((profile) => profile.ios)) {
 const app = readJson('app.json');
 if (!app.expo?.android?.package) fail('app.json expo.android.package missing');
 
+// Agents are private-network http (tailnet/LAN — contract auth is bearer, the
+// tailnet path is WireGuard-encrypted). Android kills cleartext app traffic
+// unless this is declared; without it the release APK cannot reach ANY agent
+// (issue #16, stage 7). If a public-endpoint capability ever ships, replace
+// with a scoped networkSecurityConfig instead of dropping the assertion.
+if (app.expo?.android?.usesCleartextTraffic !== true) {
+  fail('app.json expo.android.usesCleartextTraffic must be true — issue #16');
+}
+
 console.log('check:release-config OK');
