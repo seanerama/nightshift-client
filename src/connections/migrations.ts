@@ -91,6 +91,16 @@ export const CONNECTIONS_MIGRATIONS: readonly Migration[] = [
         ON compose_queue (connection_id, queued_at)`,
     ],
   },
+  {
+    // Stage 10: per-connection owner person id. Nullable and additive — NULL
+    // means "use the app default" (src/chat/person-id.ts OWNER_PERSON_ID), so
+    // every existing row keeps its stage-4 behavior unchanged. personId is NOT
+    // a secret (contract: vestigial-but-required, checked against the agent's
+    // out-of-band configured owner id, 403 on mismatch) — a plain metadata
+    // column is correct; it must never move into the token vault.
+    version: 3,
+    statements: [`ALTER TABLE connections ADD COLUMN person_id TEXT`],
+  },
 ];
 
 export class MigrationError extends Error {

@@ -84,10 +84,13 @@ describe('runMigrations', () => {
 
 describe('shipped migration list', () => {
   it('contains no destructive statements (additive-only, stage acceptance)', () => {
-    // The regex guard runs over EVERY shipped migration — v1 AND the stage-9
-    // v2 append (and every future entry) are covered by the same loop.
+    // The regex guard runs over EVERY shipped migration — v1, the stage-9 v2
+    // append, the stage-10 v3 append, and every future entry are covered by
+    // the same loop. Stage 10 extended the guard with RENAME (a rename is a
+    // drop under another name for readers of the old schema) and UPDATE/
+    // REPLACE (migrations may add shape, never rewrite existing rows).
     const destructive =
-      /\b(DROP\s+(TABLE|COLUMN|INDEX)|DELETE\s+FROM|TRUNCATE|ALTER\s+TABLE\s+\S+\s+DROP)\b/i;
+      /\b(DROP\s+(TABLE|COLUMN|INDEX)|DELETE\s+FROM|TRUNCATE|ALTER\s+TABLE\s+\S+\s+DROP|ALTER\s+TABLE\s+\S+\s+RENAME|RENAME\s+(TO|COLUMN)|UPDATE\s+\S+\s+SET|REPLACE\s+INTO)\b/i;
     for (const migration of CONNECTIONS_MIGRATIONS) {
       for (const statement of migration.statements) {
         expect(statement).not.toMatch(destructive);
@@ -136,13 +139,78 @@ describe('shipped migration list', () => {
     db.version = 1; // a stage-3-era install
 
     await runMigrations(db);
-    expect(db.version).toBe(2);
-    // Only v2 statements ran — v1 was not re-executed.
-    expect(db.executed.some((sql) => /connections/i.test(sql))).toBe(false);
+    expect(db.version).toBe(CONNECTIONS_MIGRATIONS.length);
+    // v1 was not re-executed (its CREATE TABLE connections did not run again;
+    // the only statement touching `connections` is the v3 additive ALTER).
+    expect(db.executed.some((sql) => /CREATE TABLE IF NOT EXISTS connections/i.test(sql))).toBe(
+      false,
+    );
     expect(db.executed.some((sql) => /transcript_items/i.test(sql))).toBe(true);
 
     const applied = db.executed.length;
     await runMigrations(db);
     expect(db.executed).toHaveLength(applied);
+  });
+
+  it('v2 is byte-identical to the stage-9 shape (append-only: v3 must not edit it)', () => {
+    // Same lock as v1: with v3 appended, the existing entries are frozen —
+    // any drive-by "cleanup" fails here even if semantically equivalent.
+    expect(CONNECTIONS_MIGRATIONS[1].statements).toEqual([
+      `CREATE TABLE IF NOT EXISTS transcript_items (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        connection_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        message_id TEXT,
+        event_id INTEGER,
+        event_type TEXT,
+        text TEXT NOT NULL,
+        files TEXT,
+        send_state TEXT,
+        at TEXT NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS transcript_items_by_connection
+        ON transcript_items (connection_id, seq)`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS transcript_items_user_key
+        ON transcript_items (connection_id, message_id) WHERE message_id IS NOT NULL`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS transcript_items_agent_key
+        ON transcript_items (connection_id, event_id) WHERE event_id IS NOT NULL`,
+      `CREATE TABLE IF NOT EXISTS stream_cursors (
+        connection_id TEXT PRIMARY KEY NOT NULL,
+        last_event_id INTEGER NOT NULL
+      )`,
+      `CREATE TABLE IF NOT EXISTS compose_queue (
+        message_id TEXT PRIMARY KEY NOT NULL,
+        connection_id TEXT NOT NULL,
+        text TEXT NOT NULL,
+        attachments TEXT NOT NULL,
+        queued_at TEXT NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS compose_queue_by_connection
+        ON compose_queue (connection_id, queued_at)`,
+    ]);
+  });
+
+  it('v3 adds the NULLABLE person_id column to connections — and nothing else', () => {
+    const v3 = CONNECTIONS_MIGRATIONS[2];
+    expect(v3.version).toBe(3);
+    expect(v3.statements).toEqual([`ALTER TABLE connections ADD COLUMN person_id TEXT`]);
+    // Nullable is the semantics ("null = use the app default"): a NOT NULL
+    // add would also fail outright on existing v1/v2 rows.
+    expect(v3.statements[0]).not.toMatch(/NOT\s+NULL/i);
+    // personId is not a secret, but no token material may EVER gain a column.
+    expect(v3.statements.join('\n').toLowerCase()).not.toContain('token');
+  });
+
+  it('v3 applies over an existing v2 database and is idempotent', async () => {
+    const db = new FakeMigrationDb();
+    db.version = 2; // a stage-9-era install
+
+    await runMigrations(db);
+    expect(db.version).toBe(3);
+    // ONLY the v3 statement ran.
+    expect(db.executed).toEqual([`ALTER TABLE connections ADD COLUMN person_id TEXT`]);
+
+    await runMigrations(db);
+    expect(db.executed).toHaveLength(1);
   });
 });

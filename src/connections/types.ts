@@ -26,6 +26,10 @@ export interface ConnectionRecord {
   isActive: boolean;
   /** ISO-8601 creation timestamp. */
   createdAt: string;
+  /** Owner person id for InboundMessages to THIS agent; null = use the app
+   * default (OWNER_PERSON_ID). NOT a secret (contract: vestigial-but-required,
+   * 403 on mismatch, configured out of band) — plain column, never vaulted. */
+  personId: string | null;
 }
 
 /** Metadata store (sqlite in production, in-memory fake in unit tests). */
