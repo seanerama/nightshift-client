@@ -34,7 +34,12 @@
       "typedRoutes": true
     },
     "extra": {
-      "appsTabEnabled": true
-    }
+      "appsTabEnabled": true,
+      "router": {},
+      "eas": {
+        "projectId": "30917ce1-d804-4117-a390-608a8e4daa3a"
+      }
+    },
+    "owner": "seanmahoneyai"
   }
 }
