@@ -8,7 +8,7 @@
       "artifact": "nightshift-client-v0.2.0.apk @ GitHub Release v0.2.0 — transcript durability (stage 9)"
     },
     "device": {
-      "installed": "pending — v0.2.0 sideload + durability smoke (docs/ui-smoke/stage-9-durability.md)"
+      "installed": "v0.2.0 — durability smoke PASS: history survives force-kill/restart, offline compose queue drains on reconnect"
     }
   },
   "secret_locations": [
