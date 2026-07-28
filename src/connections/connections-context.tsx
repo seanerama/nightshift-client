@@ -20,6 +20,7 @@ import {
 import { AppState } from 'react-native';
 
 import { getHealth } from '../api/client';
+import { resolvePersonId } from '../chat/person-id';
 import { addOrUpdateConnection, deleteConnection } from './handshake';
 import {
   HEALTH_POLL_INTERVAL_MS,
@@ -40,6 +41,10 @@ export interface ActiveConnection {
   agentVersion: string;
   capabilities: readonly string[];
   uiHome: string | null;
+  /** RESOLVED owner person id for every send path: the record's stored value
+   * ?? the app default (OWNER_PERSON_ID). Never null — consumers must not
+   * re-resolve or fall back to the constant themselves. */
+  personId: string;
   /** Token accessor — reads from the vault on demand; never cached in state. */
   getToken: () => Promise<string | null>;
 }
@@ -52,7 +57,12 @@ export interface ConnectionsContextValue {
   /** Health of the active connection (unknown when there is none). */
   health: HealthState;
   /** Add (no id) or edit (with id): handshake first, persist only on success. */
-  saveConnection: (input: { id?: string; baseUrl: string; token: string }) => Promise<void>;
+  saveConnection: (input: {
+    id?: string;
+    baseUrl: string;
+    token: string;
+    personId?: string;
+  }) => Promise<void>;
   /** Removes the sqlite row AND the vault token. */
   removeConnection: (id: string) => Promise<void>;
   setActive: (id: string) => Promise<void>;
@@ -105,6 +115,7 @@ export function ConnectionsProvider({
       agentVersion: activeRecord.agentVersion,
       capabilities: activeRecord.capabilities,
       uiHome: activeRecord.uiHome,
+      personId: resolvePersonId(activeRecord.personId),
       getToken: () => vault.getToken(id),
     };
   }, [activeRecord, vault]);
@@ -160,7 +171,7 @@ export function ConnectionsProvider({
   }, [activeId, activeBaseUrl, vault]);
 
   const saveConnection = useCallback(
-    async (input: { id?: string; baseUrl: string; token: string }) => {
+    async (input: { id?: string; baseUrl: string; token: string; personId?: string }) => {
       const store = await getStore();
       await addOrUpdateConnection(input, { store, vault });
       await refresh();

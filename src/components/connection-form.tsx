@@ -1,8 +1,9 @@
 /**
- * Add/Edit connection modal: URL + token, validate-and-handshake on save.
- * Errors from the handshake render inline; nothing is persisted on failure
- * (the handshake module fails closed). Tokens use secureTextEntry and are
- * never echoed back into the form or any message.
+ * Add/Edit connection modal: URL + token (+ optional owner person id, stage
+ * 10), validate-and-handshake on save. Errors from the handshake render
+ * inline; nothing is persisted on failure (the handshake module fails
+ * closed). Tokens use secureTextEntry and are never echoed back into the
+ * form or any message; the person id is NOT a secret and renders plainly.
  */
 
 import { useState } from 'react';
@@ -19,13 +20,19 @@ import {
 } from 'react-native';
 
 import { ApiClientError } from '@/api/client';
+import { OWNER_PERSON_ID } from '@/chat/person-id';
 import type { ConnectionRecord } from '@/connections/types';
 
 export interface ConnectionFormProps {
   visible: boolean;
   /** Present when editing; absent when adding. */
   existing: ConnectionRecord | null;
-  onSave: (input: { id?: string; baseUrl: string; token: string }) => Promise<void>;
+  onSave: (input: {
+    id?: string;
+    baseUrl: string;
+    token: string;
+    personId?: string;
+  }) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onClose: () => void;
 }
@@ -55,6 +62,9 @@ export function ConnectionForm({
 }: ConnectionFormProps) {
   const [baseUrl, setBaseUrl] = useState(existing?.baseUrl ?? '');
   const [token, setToken] = useState('');
+  // Stage 10: optional per-connection owner person id. NOT a secret (plain
+  // metadata; the contract's vestigial-but-required field) — no masking.
+  const [personId, setPersonId] = useState(existing?.personId ?? '');
   // Display-only visibility toggle (issue #13 follow-up: blind token entry is
   // error-prone). Flips secureTextEntry for THIS field; the value itself is
   // still never logged, echoed into messages, or persisted anywhere new.
@@ -79,7 +89,7 @@ export function ConnectionForm({
     setBusy(true);
     setError(null);
     try {
-      await onSave({ id: existing?.id, baseUrl: trimmedUrl, token });
+      await onSave({ id: existing?.id, baseUrl: trimmedUrl, token, personId });
       onClose();
     } catch (err) {
       setError(messageFor(err));
@@ -156,6 +166,23 @@ export function ConnectionForm({
               <Text style={styles.tokenToggleText}>{showToken ? 'Hide' : 'Show'}</Text>
             </Pressable>
           </View>
+
+          <Text style={styles.label}>Owner person id (optional)</Text>
+          <TextInput
+            style={styles.input}
+            value={personId}
+            onChangeText={setPersonId}
+            placeholder={OWNER_PERSON_ID}
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={!busy}
+            testID="connection-person-id"
+          />
+          <Text style={styles.help}>
+            Leave blank to use the default ({OWNER_PERSON_ID}). Must match this agent's configured
+            owner id — it is set out of band, like the token, and the agent rejects mismatched
+            messages with 403.
+          </Text>
 
           {error !== null && <Text style={styles.error}>{error}</Text>}
 
@@ -236,6 +263,11 @@ const styles = StyleSheet.create({
     color: '#2563eb',
     fontWeight: '600',
     fontSize: 13,
+  },
+  help: {
+    fontSize: 12,
+    opacity: 0.6,
+    lineHeight: 16,
   },
   error: {
     color: '#dc2626',

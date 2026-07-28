@@ -44,6 +44,7 @@ describe('addOrUpdateConnection — success path', () => {
       uiHome: 'ui://mock/home@v1',
       isActive: true, // first connection becomes active
       createdAt: '2026-07-27T00:00:00.000Z',
+      personId: null, // no person id entered → use the app default
     });
     expect(await d.store.list()).toHaveLength(1);
     expect(await d.vault.getToken('conn-1')).toBe(TOKEN);
@@ -103,6 +104,83 @@ describe('addOrUpdateConnection — success path', () => {
     expect(updated.uiHome).toBe('ui://mock/jobs@v1');
     expect(await d.store.list()).toHaveLength(1);
     expect(await d.vault.getToken(original.id)).toBe('fake-rotated-token');
+  });
+});
+
+describe('addOrUpdateConnection — per-connection personId (stage 10)', () => {
+  const fetchManifest = async () => manifest();
+
+  it('persists a trimmed person id from the form field', async () => {
+    const d = deps();
+    const record = await addOrUpdateConnection(
+      { baseUrl: 'http://agent.local:8787', token: TOKEN, personId: '  owner-alpha  ' },
+      { ...d, fetchManifest },
+    );
+    expect(record.personId).toBe('owner-alpha');
+    expect((await d.store.get('conn-1'))?.personId).toBe('owner-alpha');
+  });
+
+  it('normalizes a blank/whitespace field to null ("use the app default")', async () => {
+    const d = deps();
+    for (const [id, personId] of [
+      ['conn-1', ''],
+      ['conn-2', '   '],
+    ] as const) {
+      const record = await addOrUpdateConnection(
+        { baseUrl: `http://agent.local/${id}`, token: TOKEN, personId },
+        { ...d, fetchManifest, newId: () => id },
+      );
+      expect(record.personId).toBeNull();
+    }
+  });
+
+  it('edit with the field submitted replaces the stored value (and blank clears it)', async () => {
+    const d = deps();
+    const original = await addOrUpdateConnection(
+      { baseUrl: 'http://agent.local:8787', token: TOKEN, personId: 'owner-alpha' },
+      { ...d, fetchManifest },
+    );
+
+    const changed = await addOrUpdateConnection(
+      { id: original.id, baseUrl: original.baseUrl, token: TOKEN, personId: 'owner-beta' },
+      { ...d, fetchManifest },
+    );
+    expect(changed.personId).toBe('owner-beta');
+
+    const cleared = await addOrUpdateConnection(
+      { id: original.id, baseUrl: original.baseUrl, token: TOKEN, personId: '' },
+      { ...d, fetchManifest },
+    );
+    expect(cleared.personId).toBeNull();
+    expect((await d.store.get(original.id))?.personId).toBeNull();
+  });
+
+  it('edit WITHOUT the field (undefined) preserves the stored value', async () => {
+    const d = deps();
+    const original = await addOrUpdateConnection(
+      { baseUrl: 'http://agent.local:8787', token: TOKEN, personId: 'owner-alpha' },
+      { ...d, fetchManifest },
+    );
+
+    const updated = await addOrUpdateConnection(
+      { id: original.id, baseUrl: original.baseUrl, token: TOKEN },
+      { ...d, fetchManifest },
+    );
+    expect(updated.personId).toBe('owner-alpha');
+  });
+
+  it('persists nothing (including the person id) when the handshake fails', async () => {
+    const d = deps();
+    await expect(
+      addOrUpdateConnection(
+        { baseUrl: 'http://agent.local:8787', token: TOKEN, personId: 'owner-alpha' },
+        {
+          ...d,
+          fetchManifest: async () => Promise.reject(new ApiClientError('network', 'down')),
+        },
+      ),
+    ).rejects.toBeInstanceOf(ApiClientError);
+    expect(await d.store.list()).toHaveLength(0);
   });
 });
 

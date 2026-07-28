@@ -8,32 +8,11 @@
 
 import { openDatabaseAsync, type SQLiteDatabase } from 'expo-sqlite';
 
+import { type ConnectionRow, rowToRecord } from './connection-row';
 import { type MigrationDb, runMigrations } from './migrations';
 import type { ConnectionRecord, ConnectionStore } from './types';
 
 const DATABASE_NAME = 'connections.db';
-
-interface ConnectionRow {
-  id: string;
-  base_url: string;
-  agent_name: string;
-  agent_version: string;
-  capabilities: string;
-  ui_home: string | null;
-  is_active: number;
-  created_at: string;
-}
-
-const rowToRecord = (row: ConnectionRow): ConnectionRecord => ({
-  id: row.id,
-  baseUrl: row.base_url,
-  agentName: row.agent_name,
-  agentVersion: row.agent_version,
-  capabilities: JSON.parse(row.capabilities) as string[],
-  uiHome: row.ui_home,
-  isActive: row.is_active === 1,
-  createdAt: row.created_at,
-});
 
 const migrationDbFor = (db: SQLiteDatabase): MigrationDb => ({
   getSchemaVersion: async () => {
@@ -70,8 +49,8 @@ class SqliteConnectionStore implements ConnectionStore {
   async upsert(record: ConnectionRecord): Promise<void> {
     await this.db.runAsync(
       `INSERT OR REPLACE INTO connections
-        (id, base_url, agent_name, agent_version, capabilities, ui_home, is_active, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, base_url, agent_name, agent_version, capabilities, ui_home, is_active, created_at, person_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       record.id,
       record.baseUrl,
       record.agentName,
@@ -80,6 +59,7 @@ class SqliteConnectionStore implements ConnectionStore {
       record.uiHome,
       record.isActive ? 1 : 0,
       record.createdAt,
+      record.personId,
     );
   }
 

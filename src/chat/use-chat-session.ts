@@ -35,7 +35,6 @@ import { shouldPoll } from '../connections/health';
 import { runCatchUp } from './catch-up';
 import { createDurableChat, type DurableChat } from './durable-chat';
 import { buildInboundMessage } from './inbound';
-import { OWNER_PERSON_ID } from './person-id';
 import { getSqliteChatStore } from './sqlite-chat-store';
 import {
   emptyTranscript,
@@ -69,6 +68,10 @@ export const useChatSession = (active: ActiveConnection | null): ChatSession => 
   const activeId = active?.id ?? null;
   const baseUrl = active?.baseUrl ?? null;
   const getToken = active?.getToken ?? null;
+  // Stage 10: the ACTIVE connection's resolved person id (stored ?? default —
+  // resolution happens in the connections context, never here). Every send
+  // path below (send, retry, drain) uses THIS value; no hardcoded constant.
+  const personId = active?.personId ?? null;
 
   /** Dispatch through the pure reducer, then hand the transition to the
    * durable subscriber. The reducer itself stays persistence-free. */
@@ -118,7 +121,7 @@ export const useChatSession = (active: ActiveConnection | null): ChatSession => 
   }, [activeId]);
 
   useEffect(() => {
-    if (activeId === null || baseUrl === null || getToken === null) {
+    if (activeId === null || baseUrl === null || getToken === null || personId === null) {
       setStreamState('offline');
       return;
     }
@@ -172,7 +175,7 @@ export const useChatSession = (active: ActiveConnection | null): ChatSession => 
       try {
         const conn = await connection();
         await durable.drain({
-          personId: OWNER_PERSON_ID,
+          personId,
           newUuid: randomUUID,
           post: (message) => postMessage(conn, message),
           onSending: (row) => {
@@ -255,15 +258,12 @@ export const useChatSession = (active: ActiveConnection | null): ChatSession => 
       stop();
       subscription.remove();
     };
-  }, [activeId, baseUrl, getToken, apply]);
+  }, [activeId, baseUrl, getToken, personId, apply]);
 
   const post = useCallback(
     async (messageId: string, text: string) => {
-      if (baseUrl === null || getToken === null) return;
-      const message = buildInboundMessage(
-        { text, personId: OWNER_PERSON_ID, messageId },
-        { newUuid: randomUUID },
-      );
+      if (baseUrl === null || getToken === null || personId === null) return;
+      const message = buildInboundMessage({ text, personId, messageId }, { newUuid: randomUUID });
       apply({ type: 'send', messageId, text, at: message.receivedAt });
       try {
         const token = await getToken();
@@ -289,7 +289,7 @@ export const useChatSession = (active: ActiveConnection | null): ChatSession => 
         apply(queued ? { type: 'send-queued', messageId } : { type: 'send-failed', messageId });
       }
     },
-    [baseUrl, getToken, apply],
+    [baseUrl, getToken, personId, apply],
   );
 
   const send = useCallback((text: string) => post(randomUUID(), text), [post]);

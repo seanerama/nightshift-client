@@ -21,6 +21,11 @@ export interface HandshakeInput {
   id?: string;
   baseUrl: string;
   token: string;
+  /** Optional owner person id (stage 10). Blank/whitespace normalizes to null
+   * = "use the app default". `undefined` (field not submitted) preserves an
+   * existing record's stored value. NOT a secret — persisted as plain
+   * metadata, never in the vault. */
+  personId?: string;
 }
 
 export interface HandshakeDeps {
@@ -31,6 +36,14 @@ export interface HandshakeDeps {
   now?: () => Date;
   newId?: () => string;
 }
+
+/** Field submitted → trimmed value (blank = null = "use the app default");
+ * field not submitted (undefined) → keep whatever the record already stored. */
+const normalizePersonId = (input: string | undefined, existing: string | null): string | null => {
+  if (input === undefined) return existing;
+  const trimmed = input.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
 
 /**
  * Handshake with the agent and, only on success, persist token + metadata.
@@ -63,6 +76,7 @@ export const addOrUpdateConnection = async (
     // The first connection ever added becomes active automatically.
     isActive: existing?.isActive ?? isFirstConnection,
     createdAt: existing?.createdAt ?? now().toISOString(),
+    personId: normalizePersonId(input.personId, existing?.personId ?? null),
   };
 
   // 3. Persist token, then metadata. If the metadata write fails for a NEW
