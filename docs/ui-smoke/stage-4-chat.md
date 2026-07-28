@@ -25,16 +25,17 @@ the mock agent (or a live agent once its `/app/v1/` transport ships).
 
 | # | Step | Expect |
 |---|------|--------|
-| 1 | Open the Chat tab | Composer + empty transcript. Banner: against a live agent, **Connected** within a second or two. MOCK QUIRK: the mock only flushes the SSE response with its first event, so with an empty outbox the banner stays **Reconnecting…** until step 2's send — this is contract-legal (clients must not infer liveness from absent keep-alive pings) and not a bug |
-| 2 | Type `ping` and tap Send | The message appears immediately, right-aligned, marked **Sending…** |
-| 3 | Watch the same bubble | Marker flips to **Accepted** (202 + ack — sub-second against the mock) |
-| 4 | Wait for the reply | `mock-agent received: ping` renders as an agent bubble. NOTE the recorded stage-4 markdown choice: plain text with paragraph spacing (+ monospaced fenced code blocks); inline `**bold**` renders literally |
-| 5 | Enable airplane mode | Banner degrades to **Reconnecting…** (backoff retries continue while the app is foregrounded) |
-| 6 | Send `hello?` while offline | The bubble goes **Failed — tap to retry** (fail-closed send) |
-| 7 | Disable airplane mode | Banner recovers to **Connected**; any events missed during the drop catch up over the resumed stream (`Last-Event-ID`) without duplicating earlier ones |
-| 8 | Tap the failed `hello?` bubble | Same bubble returns to **Sending…** then **Accepted**; exactly ONE reply arrives for it (retry reuses the same messageId — the dedup key) |
-| 9 | Background the app ~10s, then foreground it | Stream stops in background (banner may show **Offline** on the way out); on return it reconnects and catches up, no duplicate transcript rows |
-| 10 | Switch the active connection away and back (Connections tab) | Transcript clears on switch (in-memory, per-session by stage scope); the chat reconnects to the newly active agent |
+| 1 | Open the Chat tab | Composer + empty transcript. Banner: against a live agent, **Connected** within a second or two. MOCK QUIRK: the mock only flushes the SSE response with its first event, so with an empty outbox the banner stays **Reconnecting…** until step 3's send — this is contract-legal (clients must not infer liveness from absent keep-alive pings) and not a bug |
+| 2 | Tap the composer to focus it | Keyboard check (issue #13 class): the soft keyboard must NOT cover the composer — the input and Send button stay visible above the keyboard |
+| 3 | Type `ping` and tap Send | The message appears immediately, right-aligned, marked **Sending…** |
+| 4 | Watch the same bubble | Marker flips to **Accepted** (202 + ack — sub-second against the mock) |
+| 5 | Wait for the reply | `mock-agent received: ping` renders as an agent bubble. NOTE the recorded stage-4 markdown choice: plain text with paragraph spacing (+ monospaced fenced code blocks); inline `**bold**` renders literally |
+| 6 | Enable airplane mode | Banner degrades to **Reconnecting…** (backoff retries continue while the app is foregrounded) |
+| 7 | Send `hello?` while offline | The bubble goes **Failed — tap to retry** (fail-closed send) |
+| 8 | Disable airplane mode | Banner recovers to **Connected**; any events missed during the drop catch up over the resumed stream (`Last-Event-ID`) without duplicating earlier ones |
+| 9 | Tap the failed `hello?` bubble | Same bubble returns to **Sending…** then **Accepted**; exactly ONE reply arrives for it (retry reuses the same messageId — the dedup key) |
+| 10 | Background the app ~10s, then foreground it | Stream stops in background (banner may show **Offline** on the way out); on return it reconnects and catches up, no duplicate transcript rows |
+| 11 | Switch the active connection away and back (Connections tab) | Transcript clears on switch (in-memory, per-session by stage scope); the chat reconnects to the newly active agent |
 
 ## Out of scope here (durability stage)
 
