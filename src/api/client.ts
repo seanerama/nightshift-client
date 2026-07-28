@@ -11,7 +11,7 @@
  * ApiClientError. A partial or unvalidated object is never returned.
  */
 
-import type { HealthResponse, Manifest } from 'agent-app-contract/types';
+import type { HealthResponse, InboundMessage, Manifest } from 'agent-app-contract/types';
 
 export type ApiErrorKind = 'network' | 'http' | 'shape';
 
@@ -111,6 +111,68 @@ export const getManifest = async (connection: AgentConnection): Promise<Manifest
       'GET /app/v1/manifest body is not an app-ingress v1 manifest',
       { body: JSON.stringify(data) },
     );
+  }
+  return data;
+};
+
+/** Response body of POST /app/v1/messages — acceptance only, NEVER the reply
+ * (async by construction; the reply arrives later as a `reply` SSE event). */
+export interface MessageAccepted {
+  ok: true;
+  messageId: string;
+}
+
+const isMessageAccepted = (value: unknown): value is MessageAccepted =>
+  isRecord(value) && value.ok === true && typeof value.messageId === 'string';
+
+/** POST /app/v1/messages — submit an InboundMessage (stage 4).
+ *
+ * The contract's ONLY success status is 202 Accepted with `{ ok, messageId }`;
+ * anything else fails closed, including a 200 (an agent answering a message
+ * synchronously is off-contract). Re-POSTing the same messageId is safe by
+ * contract invariant 5 — the dedup key makes retry-on-timeout non-duplicating. */
+export const postMessage = async (
+  connection: AgentConnection,
+  message: InboundMessage,
+): Promise<MessageAccepted> => {
+  const url = joinUrl(connection.baseUrl, '/app/v1/messages');
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${connection.token}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(message),
+    });
+  } catch (err) {
+    throw new ApiClientError('network', `POST /app/v1/messages failed: ${(err as Error).message}`);
+  }
+
+  const body = await response.text();
+  if (response.status !== 202) {
+    throw new ApiClientError('http', `POST /app/v1/messages returned ${response.status}`, {
+      status: response.status,
+      body,
+    });
+  }
+
+  let data: unknown;
+  try {
+    data = JSON.parse(body) as unknown;
+  } catch {
+    throw new ApiClientError('shape', 'POST /app/v1/messages returned a non-JSON body', {
+      status: response.status,
+      body,
+    });
+  }
+  if (!isMessageAccepted(data) || data.messageId !== message.messageId) {
+    throw new ApiClientError('shape', 'POST /app/v1/messages body is not { ok, messageId }', {
+      status: response.status,
+      body,
+    });
   }
   return data;
 };

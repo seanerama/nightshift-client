@@ -23,6 +23,14 @@ export interface MockAgent {
   stop(): Promise<void>;
 }
 
+export interface MockAgentOptions {
+  /** Owner id every inbound personId is checked against (contract invariant 4).
+   * Defaults to the CLI's own default ('owner-mock') when omitted. */
+  ownerId?: string;
+  /** Extra capabilities to declare; 'chat' is always declared. */
+  capabilities?: readonly string[];
+}
+
 const waitForReadyLine = (proc: ChildProcess): Promise<number> =>
   new Promise((resolve, reject) => {
     let stdout = '';
@@ -60,8 +68,16 @@ const pollHealthUntilReady = async (baseUrl: string, token: string): Promise<voi
   }
 };
 
-export const startMockAgent = async (token: string): Promise<MockAgent> => {
-  const child = spawn(process.execPath, [CLI, '--token', token, '--port', '0'], {
+export const startMockAgent = async (
+  token: string,
+  options: MockAgentOptions = {},
+): Promise<MockAgent> => {
+  const args = [CLI, '--token', token, '--port', '0'];
+  if (options.ownerId !== undefined) args.push('--owner-id', options.ownerId);
+  if (options.capabilities !== undefined && options.capabilities.length > 0) {
+    args.push('--capabilities', options.capabilities.join(','));
+  }
+  const child = spawn(process.execPath, args, {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   const port = await waitForReadyLine(child);
@@ -73,7 +89,11 @@ export const startMockAgent = async (token: string): Promise<MockAgent> => {
     stop: async () => {
       if (child.exitCode === null) {
         child.kill('SIGTERM');
+        // The mock's graceful shutdown waits for open connections (e.g. an
+        // SSE stream a failing test never closed). Escalate rather than hang.
+        const killTimer = setTimeout(() => child.kill('SIGKILL'), 5000);
         await once(child, 'exit');
+        clearTimeout(killTimer);
       }
     },
   };

@@ -1,4 +1,5 @@
-import { ApiClientError, getHealth, getManifest } from './client';
+import type { InboundMessage } from 'agent-app-contract/types';
+import { ApiClientError, getHealth, getManifest, postMessage } from './client';
 
 const connection = { baseUrl: 'http://127.0.0.1:9', token: 'test-token' };
 
@@ -142,5 +143,74 @@ describe('valid responses', () => {
 
     const health = await getHealth(connection);
     expect(health.ok).toBe(false);
+  });
+});
+
+describe('postMessage (stage 4)', () => {
+  const message: InboundMessage = {
+    schema: 1,
+    messageId: '9f2c1e64-8b3a-4d21-9f7e-2c5a1b0d6e83',
+    personId: 'owner-nightshift',
+    text: 'ping',
+    attachments: [],
+    receivedAt: '2026-07-27T12:00:00.000Z',
+  };
+  const accepted = { ok: true, messageId: message.messageId };
+
+  it('POSTs the InboundMessage with the bearer header and returns the 202 body', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(accepted, 202));
+
+    const result = await postMessage(connection, message);
+
+    const { url, init } = requestOf(fetchMock.mock.calls[0]);
+    expect(url).toBe('http://127.0.0.1:9/app/v1/messages');
+    expect(init.method).toBe('POST');
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer test-token');
+    expect((init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+    expect(JSON.parse(String(init.body))).toEqual(message);
+    expect(result).toEqual(accepted);
+  });
+
+  it('rejects a 200 — the POST must NEVER return the reply (async by construction)', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ schema: 1, text: 'a synchronous reply', files: [] }, 200),
+    );
+
+    await expect(postMessage(connection, message)).rejects.toMatchObject({
+      kind: 'http',
+      status: 200,
+    });
+  });
+
+  it.each([[400], [401], [403], [500]])('rejects on HTTP %d with a typed error', async (status) => {
+    fetchMock.mockResolvedValueOnce(new Response('{"ok":false,"error":"nope"}', { status }));
+
+    const promise = postMessage(connection, message);
+    await expect(promise).rejects.toBeInstanceOf(ApiClientError);
+    await expect(promise).rejects.toMatchObject({ kind: 'http', status });
+  });
+
+  it('rejects on network failure with a typed error', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'));
+
+    await expect(postMessage(connection, message)).rejects.toMatchObject({ kind: 'network' });
+  });
+
+  it('rejects a 202 whose body is not { ok, messageId }', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true }, 202));
+
+    await expect(postMessage(connection, message)).rejects.toMatchObject({ kind: 'shape' });
+  });
+
+  it('rejects a 202 that echoes a DIFFERENT messageId', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true, messageId: 'other-id' }, 202));
+
+    await expect(postMessage(connection, message)).rejects.toMatchObject({ kind: 'shape' });
+  });
+
+  it('rejects a 202 with a non-JSON body', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('accepted', { status: 202 }));
+
+    await expect(postMessage(connection, message)).rejects.toMatchObject({ kind: 'shape' });
   });
 });
