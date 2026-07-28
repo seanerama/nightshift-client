@@ -1,41 +1,18 @@
-# Nightshift Client — Status & Handoff
+# Status & Handoff
 
-> Runtime/ops truth (framework-spec §4.6). Owned by the **Release/Deploy Operator**,
-> updated on every deploy. Records secret **locations** only — never values.
+> Runtime/ops truth (framework-spec §4.6). Generated from `.verity/runtime.json`
+> by the Release/Deploy Operator. Secret LOCATIONS only — never values.
 
-**As of:** not yet deployed
+**Live version:** 0.1.0
+**Deployed at:** (not deployed)
+**Rollback from:** (n/a)
 
-## TL;DR
+## Environments
+- **release:** {"tag":"v0.1.0","artifact":"nightshift-client-v0.1.0.apk @ GitHub Release v0.1.0 (run 30318664441)"}
+- **device:** {"installed":"pending — awaiting operator sideload + UI-smoke (docs/ui-smoke/)"}
 
-Scaffolded by Verity. Nothing deployed yet.
-
-## Live deployment
-
-- (none)
-
-## Releases
-
-> Convention (Ship operator maintains this section): release = tag `vX.Y.Z` →
-> Actions → APK on the GitHub Release page → sideload.
-
-- **Current released tag:** none yet
-- **Installed on device:** none yet
-- Pipeline: `.github/workflows/release.yml` (ADR 0005); operator steps in
-  `docs/release-runbook.md`. One-time setup (EAS project link + `EXPO_TOKEN`
-  secret) not yet done.
-
-## Images
-
-- prefix: `ghcr.io/seanerama/nightshift-client`
-- (no releases yet)
-
-## Secrets
-
-- `EXPO_TOKEN` — GitHub Actions secret on `seanerama/nightshift-client`
-  (NOT yet created; operator setup in `docs/release-runbook.md`). Location
-  only — never values.
-- otherwise (none configured) — when set, list NAMES + LOCATIONS only, never values.
+## Secret locations (names + on-disk locations only, never values)
+- EXPO_TOKEN @ GitHub Actions secrets (seanerama/nightshift-client); Expo account seanmahoneyai; EAS-managed Android keystore on Expo servers (backup: npx eas-cli credentials -p android)
 
 ## Coordination notes
-
 - (none)

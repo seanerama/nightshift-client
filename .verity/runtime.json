@@ -1,0 +1,18 @@
+{
+  "version": "0.1.0",
+  "deployed_at": null,
+  "rollback_from": null,
+  "environments": {
+    "release": {
+      "tag": "v0.1.0",
+      "artifact": "nightshift-client-v0.1.0.apk @ GitHub Release v0.1.0 (run 30318664441)"
+    },
+    "device": {
+      "installed": "pending — awaiting operator sideload + UI-smoke (docs/ui-smoke/)"
+    }
+  },
+  "secret_locations": [
+    "EXPO_TOKEN @ GitHub Actions secrets (seanerama/nightshift-client); Expo account seanmahoneyai; EAS-managed Android keystore on Expo servers (backup: npx eas-cli credentials -p android)"
+  ],
+  "notes": []
+}
