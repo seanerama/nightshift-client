@@ -22,6 +22,9 @@ forms, custom views — is server-delivered; the app ships rarely.
 | [0005](adr/0005-releases-via-eas-cloud-builds-published-to-github-releases.md) | EAS cloud builds → APK on GitHub Releases (catalog method `eas-github-releases`) |
 | [0006](adr/0006-live-apps-refresh-via-pull-triggers-defer-push-to-an-additive-s.md) | Live Apps refresh: pull triggers now (no contract change); push deferred to an additive SSE event type |
 | [0007](adr/0007-rendered-resource-lifetime-is-decoupled-from-the-resource-list.md) | A list change never reloads or tears down a rendered resource |
+| [0008](adr/0008-theme-tokens-with-an-explicit-light-dark-system-setting.md) | Theme tokens across the shell; Light/Dark/System setting also drives `ui/theme` |
+| [0009](adr/0009-client-rendered-tool-forms-generated-from-tools-list-schemas.md) | A generated form for every listed tool, merged into Apps; published resources win |
+| [0010](adr/0010-attachments-capture-and-upload-before-send-with-queue-safe-loca.md) | Attachments upload before send; offline capture copied locally, uploaded on drain |
 
 ## Frozen contracts
 
@@ -200,3 +203,100 @@ The push stage follows once the upstream event-type extension lands.
 
 Next: **`/verity:plan`** decomposes this design into the initial thin backlog —
 Stage 0 first (it blocks everything), then feature stages 1–5 above.
+
+---
+
+# Addendum — Shell polish, attachments, and generated tool UI (2026-07-28)
+
+*Architect pass over six owner requests, against the shipped v0.4.0 codebase.
+ADRs [0008](adr/0008-theme-tokens-with-an-explicit-light-dark-system-setting.md),
+[0009](adr/0009-client-rendered-tool-forms-generated-from-tools-list-schemas.md),
+[0010](adr/0010-attachments-capture-and-upload-before-send-with-queue-safe-loca.md).*
+
+## Current state — verified before designing
+
+| Request | What is actually there today |
+|---|---|
+| Chat first, Connections third | `_layout.tsx` order is `index` (Connections), `chat`, `apps`, `settings`. `index` is also the landing route, so reordering is not purely cosmetic — the tab bar order comes from `<Tabs.Screen>` order, but which screen opens first needs `initialRouteName` (or a file rename). |
+| Dark mode in Settings | No theme module. **49 hardcoded colour literals across 7 files**, all light. `Settings` is an empty `PlaceholderScreen`. `useColorScheme` is called once, in `resource-view.tsx`. **Agent-served resources already honour dark mode via `ui/theme`; the shell around them does not.** |
+| Copy a chat message | Transcript items already carry their text (`UserItem`/`AgentItem`); no copy affordance exists. Pure UI. |
+| Photo → chat | No camera dependency. No upload function in `src/api/client.ts`. |
+| File → chat | `POST /app/v1/uploads` + `GET /app/v1/files/<id>` are **already in app-ingress v1** and served by the mock. `InboundMessage.attachments` is plumbed through the store, queue, drain, and the v2 migration — always `[]`, commented "reserved for the attachments stage". `CAPABILITY_FILES` exists and **gates nothing**. |
+| A form per tool | `listTools` exists in `src/mcp/client.ts` and is **called nowhere**. `tools/list` is entirely unused; tools reach the app only via resource HTML through the ui-bridge. |
+
+Two findings shaped the design more than the requests did: **the contract
+already supports attachments end to end** (so this is client-only work, not a
+contract change), and **`tools/list` is dead code today** (so generated tool UI
+is genuinely new capability, not a re-skin).
+
+## Decisions taken with the owner
+
+- **Generated tool forms merge into the Apps tab**, not a fifth tab — one
+  surface answering "what can this agent do for me". A generated form is
+  suppressed for any tool already named in a listed resource's
+  `_meta["ui/tools"]`, so hand-authored agent UI automatically *upgrades* the
+  generic form instead of duplicating it. Reuses an existing metadata key; no
+  contract change.
+- **Confirm sheet on every tool call**, showing the tool and the exact
+  arguments. app-ingress v1 has no destructive flag and guessing one from tool
+  names is a coin flip.
+- **Sequencing:** shell polish → attachments → tool forms. The owner's own
+  example (an import form for a technical guide) needs a file input, so the tool
+  work genuinely depends on attachments.
+
+## Contracts — unchanged
+
+`app-ingress` v1 and `ui-bridge` v1 stay **byte-unchanged** across all six
+requests; no new contract is cut. Attachments use routes and a message field
+that v1 already defines; tool forms use `tools/list` + `tools/call` under the
+existing `mcp-tools` capability; the theme setting changes the *value* pushed in
+`ui/theme`, not its shape.
+
+The one thing to watch is not a contract change but a **gating change**: the
+Apps tab currently self-gates on `mcp-apps-ui` and must widen to `mcp-apps-ui`
+**OR** `mcp-tools` (ADR 0009), so an agent declaring only `mcp-tools` gets an
+Apps tab for the first time.
+
+The ui-bridge allowlist is untouched. Native tool forms are **not** a bypass of
+it: the allowlist constrains untrusted resource HTML, a different principal from
+the owner tapping a native button — the owner already holds the bearer token.
+
+## Accepted features
+
+No drop-in catalog feature applies (`helper-bot` remains declined). All six
+requests are owner-originated.
+
+## Slice handed to `/verity:plan`
+
+Stage 0 is long done; the spine is shipped through v0.4.0. Three stages, in
+dependency order:
+
+**A — Shell polish (no contract change; adds `expo-clipboard` + migration v4).**
+1. Tab order: Chat, Apps, Connections, Settings — with Chat as the landing
+   screen. Verified during planning: expo-router's `Tabs` **omits**
+   `initialRouteName`, so this is a **file rename** (`chat.tsx`→`index.tsx`,
+   `index.tsx`→`connections.tsx`), and `header-identity.tsx`'s
+   `router.navigate('/')` must become `/connections` or it silently lands on
+   Chat.
+2. Theme tokens: sweep all 49 literals into a token module; Light/Dark/System
+   setting in a real Settings screen; resolved scheme feeds `ui/theme`.
+3. Long-press a chat message → copy.
+
+The token sweep is wide and mechanical — it should not share a stage with
+behavioural change.
+
+**B — Attachments, outbound (ADR 0010).** `expo-image-picker` +
+`expo-document-picker`; first multipart request in `src/api/client.ts`
+(asserting the contract's **201**); upload-before-send; offline capture copied
+to app storage and uploaded on drain; orphan sweep; composer gated on `files`.
+Inbound rendering of `AssistantReply.files` is deliberately deferred.
+
+**C — Generated tool forms (ADR 0009).** `tools/list` wired for the first time;
+schema→form renderer for the documented subset with a raw-JSON fallback;
+suppression via `_meta["ui/tools"]`; confirm sheet; results via
+`toolResultText`; Apps gate widened. File-typed inputs reuse B's upload routine.
+
+Each stage carries its own UI-smoke asset. Stage A's must check both schemes
+**and** the case where the app override disagrees with the device scheme (the
+one that proves the resolved value reaches the bridge). Stage C's must check an
+agent declaring only `mcp-tools`.
