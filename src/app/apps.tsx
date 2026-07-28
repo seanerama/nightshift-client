@@ -63,7 +63,21 @@ export default function AppsScreen() {
     return <PlaceholderScreen title="Apps" subtitle="Not available for this agent." />;
   }
   // gate === 'available' implies active is non-null.
-  return active === null ? null : <AppsBrowser connection={active} />;
+  //
+  // KEYED PER AGENT — load-bearing, not cosmetic. Every piece of AppsBrowser's
+  // state (the list, the open-resource snapshot, the vanished notice, the
+  // ui.home guard) belongs to ONE agent. The stage-11 rule "once a list is
+  // known, no event takes it away" holds WITHIN a connection and is wrong
+  // ACROSS one: without this key, switching agents left the previous agent's
+  // rows on screen under the new agent's heading — indefinitely if the new
+  // agent's fetch failed — and left its open resource mounted and re-wired to
+  // the new connection. See ADR 0007 §"Within a connection, not across one".
+  //
+  // baseUrl is in the key because editing a connection keeps its id while
+  // re-pointing it at a genuinely different agent.
+  return active === null ? null : (
+    <AppsBrowser key={`${active.id}:${active.baseUrl}`} connection={active} />
+  );
 }
 
 export function AppsBrowser({ connection }: { connection: ActiveConnection }) {

@@ -41,6 +41,32 @@ Concretely:
 - Refresh never blanks the tab. The last known list stays on screen while a
   refresh is in flight and after one fails (ADR 0006).
 
+### Within a connection, not across one
+
+Everything above scopes to **one agent**. The rule that a known list survives
+every event holds *within* a connection and is **wrong across one**: a list, an
+open-resource snapshot, and a vanished notice all belong to the agent they were
+fetched from, and none of them may outlive a switch to a different agent.
+
+This distinction was missed on the first pass and caused a real regression,
+recorded here so it is not re-derived. Before stage 11, a connection change
+happened to self-heal — the list blanked to a loading state (early-returning
+before the open-resource check) and the open resource was re-derived by looking
+it up in the new agent's list, so it simply vanished. Stage 11 removed both of
+those, correctly, for the refresh case. What was then observed: switching agents
+left the previous agent's rows listed under the new agent's heading —
+**indefinitely** if the new agent's fetch failed, behind a "showing the last
+known list" notice that was describing another agent's data — and left the
+previous agent's resource mounted and re-wired to the new connection, briefly
+pairing one agent's HTML with another agent's bridge and allowlist.
+
+So: **per-agent view state is discarded whenever the agent changes**, enforced
+structurally by keying the browser on connection identity (id *and* base url —
+editing a connection keeps its id while re-pointing it at a different agent)
+rather than by remembering to reset four things by hand. Agent isolation is
+load-bearing in this app (stages 9 and 10); the Apps tab is not an exception to
+it.
+
 ## Alternatives considered
 
 The **contracts-first guide** is silent here — this is client-internal state

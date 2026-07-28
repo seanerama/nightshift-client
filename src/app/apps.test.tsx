@@ -51,9 +51,13 @@ jest.mock('expo-router', () => ({
 
 jest.mock('@/config/apps-tab', () => ({ APPS_TAB_ENABLED: true }));
 
-// AppsBrowser takes its connection as a prop; the provider (and its expo-sqlite
-// store) is not part of what this file locks.
-jest.mock('@/connections/connections-context', () => ({ useActiveConnection: () => null }));
+// The real provider drags in expo-sqlite; the active connection is the only
+// thing AppsScreen consumes from it, so it is driven directly here. Mutable
+// because the switch tests below change which agent is active.
+let mockActiveConnection: ActiveConnection | null = null;
+jest.mock('@/connections/connections-context', () => ({
+  useActiveConnection: () => mockActiveConnection,
+}));
 
 jest.mock('@/mcp/client', () => ({
   initialize: jest.fn(async () => ({ protocolVersion: '2025-06-18', capabilities: {} })),
@@ -63,9 +67,12 @@ jest.mock('@/mcp/client', () => ({
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { listResources } = require('@/mcp/client') as { listResources: jest.Mock };
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { AppsBrowser } = require('./apps') as {
+const appsModule = require('./apps') as {
+  default: () => React.ReactElement | null;
   AppsBrowser: (props: { connection: ActiveConnection }) => React.ReactElement;
 };
+const { AppsBrowser } = appsModule;
+const AppsScreen = appsModule.default;
 
 const connection: ActiveConnection = {
   id: 'conn-1',
@@ -252,5 +259,138 @@ describe('AppsBrowser refresh safety (ADR 0007)', () => {
 
     expect(mockMounts).toEqual(['ui://a']); // not yanked back to home
     expect(findByTestID(tree, 'apps-resource-ui://a')).toBeDefined();
+  });
+});
+
+/**
+ * Per-agent isolation across a connection SWITCH.
+ *
+ * These drive the real `AppsScreen`, not `AppsBrowser`, because the boundary
+ * being locked is the `key` AppsScreen puts on the browser — testing the inner
+ * component directly would step over the very thing under test.
+ *
+ * The rule "once a list is known, no event takes it away" holds within a
+ * connection and is wrong across one (ADR 0007). Regression coverage for a real
+ * defect: switching agents used to leave the previous agent's rows on screen
+ * under the new agent's heading, and its open resource mounted and re-wired to
+ * the new connection.
+ */
+describe('AppsScreen per-agent isolation on connection switch', () => {
+  let tree: ReactTestRenderer;
+
+  const alpha: ActiveConnection = {
+    ...connection,
+    id: 'conn-alpha',
+    baseUrl: 'http://alpha:1',
+    agentName: 'agent-alpha',
+  };
+  const beta: ActiveConnection = {
+    ...connection,
+    id: 'conn-beta',
+    baseUrl: 'http://beta:2',
+    agentName: 'agent-beta',
+  };
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    mockMounts.length = 0;
+    mockUnmounts.length = 0;
+    mockProps.length = 0;
+    listResources.mockReset();
+    mockActiveConnection = null;
+  });
+
+  afterEach(() => {
+    act(() => tree?.unmount());
+    mockActiveConnection = null;
+    jest.useRealTimers();
+  });
+
+  const rowIDs = () =>
+    tree.root
+      .findAll(
+        (node) =>
+          typeof node.props.testID === 'string' &&
+          node.props.testID.startsWith('apps-resource-') &&
+          typeof node.props.onPress === 'function',
+      )
+      .map((node) => node.props.testID as string);
+
+  /** Mount on `alpha` with one resource listed. */
+  const mountOnAlpha = async () => {
+    mockActiveConnection = alpha;
+    listResources.mockResolvedValueOnce(listing('ui://alpha/jobs@v1'));
+    await act(async () => {
+      tree = create(<AppsScreen />);
+    });
+    await flush();
+    expect(rowIDs()).toEqual(['apps-resource-ui://alpha/jobs@v1']);
+  };
+
+  /** Switch the active connection, leaving beta's fetch outstanding. */
+  const switchTo = async (next: ActiveConnection, betaList?: Promise<never>) => {
+    mockActiveConnection = next;
+    listResources.mockReturnValueOnce(betaList ?? new Promise<never>(() => {}));
+    await act(async () => {
+      tree.update(<AppsScreen />);
+    });
+  };
+
+  it('does NOT list the previous agent’s resources after a switch', async () => {
+    await mountOnAlpha();
+    await switchTo(beta);
+
+    // Beta has not answered yet — the correct state is "loading beta", never
+    // "here are alpha's apps, labelled beta".
+    expect(rowIDs()).toEqual([]);
+  });
+
+  it('does NOT keep the previous agent’s resource mounted after a switch', async () => {
+    await mountOnAlpha();
+    await act(async () => {
+      findByTestID(tree, 'apps-resource-ui://alpha/jobs@v1').props.onPress();
+    });
+    expect(mockMounts).toEqual(['ui://alpha/jobs@v1']);
+
+    await switchTo(beta);
+
+    expect(mockUnmounts).toEqual(['ui://alpha/jobs@v1']);
+    expect(tree.root.findAll((n) => n.props.testID === 'stub-resource-view')).toHaveLength(0);
+  });
+
+  it('a FAILING new agent falls back — it never inherits the old agent’s list', async () => {
+    await mountOnAlpha();
+
+    // The reviewed defect at its worst: a failed refresh keeps the last known
+    // list, so a broken beta would have shown alpha's apps indefinitely.
+    mockActiveConnection = beta;
+    listResources.mockRejectedValueOnce(new Error('beta unreachable'));
+    await act(async () => {
+      tree.update(<AppsScreen />);
+    });
+    await flush();
+
+    expect(rowIDs()).toEqual([]);
+    expect(tree.root.findAll((n) => n.props.testID === 'apps-stale-notice')).toHaveLength(0);
+  });
+
+  it('re-pointing the SAME connection id at another agent also resets', async () => {
+    await mountOnAlpha();
+    // Editing a connection keeps its id but can move it to a different agent.
+    await switchTo({ ...alpha, baseUrl: 'http://moved:9', agentName: 'agent-moved' });
+
+    expect(rowIDs()).toEqual([]);
+  });
+
+  it('the new agent’s own list renders once it answers', async () => {
+    await mountOnAlpha();
+    mockActiveConnection = beta;
+    listResources.mockResolvedValueOnce(listing('ui://beta/home@v1'));
+    await act(async () => {
+      tree.update(<AppsScreen />);
+    });
+    await flush();
+
+    expect(rowIDs()).toEqual(['apps-resource-ui://beta/home@v1']);
   });
 });

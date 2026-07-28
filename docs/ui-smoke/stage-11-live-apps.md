@@ -82,9 +82,25 @@ is the closest available stand-in for a mid-session publish until the upstream
    pull). **You must NOT be yanked back into the home resource.**
    _Trigger: **poll** or **gesture**._
 
-10. **Nothing else regressed.** Chat still sends and receives; the header
-    identity and quick switcher still work; switching connections re-fetches the
-    Apps list for the newly active agent.
+10. **AGENT ISOLATION ACROSS A SWITCH.** Needs **two** connections to
+    *different* agents (start a second mock on another port with a distinct
+    `--token`). This step exists because it caught a real defect in review —
+    "the list survives every event" is true within one agent and wrong across
+    two.
+    - With agent A's Apps list on screen, tap the header → quick switcher →
+      agent B. **A's rows must disappear immediately.** You should see B
+      loading, then B's own apps. Seeing A's resources under B's name, even
+      briefly, is a FAIL.
+    - Repeat with **B unreachable** (stop agent B first). You must get the
+      fallback card for B — **not** A's list behind a "couldn't refresh"
+      notice. That notice must never describe another agent's data.
+    - Repeat with **an A resource open** when you switch. It must close, not
+      follow you to B.
+    - Edit a connection's URL to point at a different agent (same connection
+      entry) → the list must reset the same way.
+
+11. **Nothing else regressed.** Chat still sends and receives; the header
+    identity and quick switcher still work.
 
 ## Record
 
@@ -93,4 +109,5 @@ is the closest available stand-in for a mid-session publish until the upstream
 - Trigger observed at each of steps 2, 3, 6, 7, 9:
 - Step 7 — did the open resource survive, and was an action in flight? (y/n)
 - Step 8 — did the notice appear and dismiss? (y/n)
+- Step 10 — all four sub-cases, two distinct agents used? (y/n)
 - Result: PASS / FAIL + notes
