@@ -150,6 +150,7 @@ function TranscriptRow({
         <Text style={styles.meta}>
           {item.sendState === 'sending' && 'Sending…'}
           {item.sendState === 'accepted' && 'Accepted'}
+          {item.sendState === 'queued' && 'Queued — sends when reconnected'}
           {failed && 'Failed — tap to retry'}
         </Text>
       </Pressable>

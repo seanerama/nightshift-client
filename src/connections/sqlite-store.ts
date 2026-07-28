@@ -95,20 +95,25 @@ class SqliteConnectionStore implements ConnectionStore {
   }
 }
 
-let storePromise: Promise<ConnectionStore> | null = null;
+let dbPromise: Promise<SQLiteDatabase> | null = null;
 
-/** Open (once) the connections database, run migrations, return the store. */
-export const getSqliteConnectionStore = (): Promise<ConnectionStore> => {
-  if (storePromise === null) {
-    storePromise = (async () => {
+/** Open (once) the connections database and run migrations. Shared with the
+ * stage-9 chat store — one file, one handle, one migrations run. */
+export const getConnectionsDatabase = (): Promise<SQLiteDatabase> => {
+  if (dbPromise === null) {
+    dbPromise = (async () => {
       const db = await openDatabaseAsync(DATABASE_NAME);
       await runMigrations(migrationDbFor(db));
-      return new SqliteConnectionStore(db);
+      return db;
     })();
     // Allow retry after a failed open/migration instead of caching rejection.
-    storePromise.catch(() => {
-      storePromise = null;
+    dbPromise.catch(() => {
+      dbPromise = null;
     });
   }
-  return storePromise;
+  return dbPromise;
 };
+
+/** Open (once) the connections database, run migrations, return the store. */
+export const getSqliteConnectionStore = (): Promise<ConnectionStore> =>
+  getConnectionsDatabase().then((db) => new SqliteConnectionStore(db));

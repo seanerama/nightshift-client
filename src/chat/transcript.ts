@@ -1,9 +1,10 @@
 /**
- * Transcript store (stage 4) — pure reducer, in-memory ONLY.
- *
- * Scope guard from the stage spec: NO persistence, NO offline compose queue,
- * NO cross-restart /outbox catch-up — those belong to the durability stage.
- * This holds one session's ordered conversation:
+ * Transcript store (stage 4) — pure reducer. Stage 9 keeps it pure:
+ * persistence is a write-through SUBSCRIBER over these transitions
+ * (durable-chat.ts), never reducer edits, and hydration replays persisted
+ * rows back into this exact state shape (`seenEventIds` is reconstructible
+ * from the hydrated agent rows). This holds one session's ordered
+ * conversation:
  *
  * - user items: optimistic insert on send, state sending → accepted (202 or
  *   `ack` event) / failed (send error) with a retry affordance that KEEPS the
@@ -18,7 +19,9 @@
 
 import type { EventEnvelope } from 'agent-app-contract/types';
 
-export type SendState = 'sending' | 'accepted' | 'failed';
+/** `queued` (stage 9): composed while the agent was unreachable; persisted in
+ * the compose queue and re-POSTed (same messageId) when the link returns. */
+export type SendState = 'sending' | 'accepted' | 'failed' | 'queued';
 
 export interface UserItem {
   kind: 'user';
@@ -59,6 +62,9 @@ export type TranscriptAction =
   | { type: 'send-accepted'; messageId: string }
   /** POST rejected (network / non-202 / bad shape). */
   | { type: 'send-failed'; messageId: string }
+  /** POST unreachable and the compose queue took the message (stage 9). Also
+   * flips a drain attempt back to queued when the link is still down. */
+  | { type: 'send-queued'; messageId: string }
   /** A known-type envelope from the event stream (ack | reply | notice). */
   | { type: 'event'; envelope: EventEnvelope }
   /** Active connection changed — the session transcript belongs to one agent. */
@@ -101,8 +107,10 @@ const applyEvent = (state: TranscriptState, envelope: EventEnvelope): Transcript
       if (typeof messageId !== 'string') return { ...state, seenEventIds };
       return {
         // An ack confirms acceptance — it upgrades 'sending' (202 lost in a
-        // retry race) but must not overwrite a NEWER failed retry attempt.
-        items: setSendState(state.items, messageId, 'accepted', ['sending', 'accepted']),
+        // retry race) and 'queued' (the POST actually landed before the
+        // network error, or a catch-up ack for a drained send) but must not
+        // overwrite a NEWER failed retry attempt.
+        items: setSendState(state.items, messageId, 'accepted', ['sending', 'queued', 'accepted']),
         seenEventIds,
       };
     }
@@ -137,10 +145,15 @@ export const transcriptReducer = (
         (item) => item.kind === 'user' && item.messageId === action.messageId,
       );
       if (existing) {
-        // Retry keeps the item in place and its dedup key intact.
+        // Retry (or a queue drain re-POST) keeps the item in place and its
+        // dedup key intact.
         return {
           ...state,
-          items: setSendState(state.items, action.messageId, 'sending', ['failed', 'sending']),
+          items: setSendState(state.items, action.messageId, 'sending', [
+            'failed',
+            'sending',
+            'queued',
+          ]),
         };
       }
       const item: UserItem = {
@@ -155,13 +168,23 @@ export const transcriptReducer = (
     case 'send-accepted':
       return {
         ...state,
-        items: setSendState(state.items, action.messageId, 'accepted', ['sending', 'accepted']),
+        items: setSendState(state.items, action.messageId, 'accepted', [
+          'sending',
+          'queued',
+          'accepted',
+        ]),
       };
     case 'send-failed':
       // Only a pending send can fail; an already-accepted item stays accepted.
       return {
         ...state,
         items: setSendState(state.items, action.messageId, 'failed', ['sending']),
+      };
+    case 'send-queued':
+      // Only a pending attempt can park in the queue; accepted/failed stay put.
+      return {
+        ...state,
+        items: setSendState(state.items, action.messageId, 'queued', ['sending']),
       };
     case 'event':
       return applyEvent(state, action.envelope);

@@ -34,7 +34,19 @@ export const KNOWN_EVENT_TYPES: ReadonlySet<string> = new Set(['ack', 'reply', '
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-/** Structural check for the EventEnvelope wire shape; null on any mismatch. */
+/** Structural check for the EventEnvelope wire shape (shared with the outbox
+ * catch-up client — the /events and /outbox payloads are the SAME envelope). */
+export const isEventEnvelope = (value: unknown): value is EventEnvelope => {
+  if (!isRecord(value)) return false;
+  if (value.schema !== 1) return false;
+  if (typeof value.id !== 'number' || !Number.isInteger(value.id) || value.id < 0) return false;
+  if (typeof value.type !== 'string' || value.type.length === 0) return false;
+  if (typeof value.at !== 'string') return false;
+  if (!isRecord(value.payload)) return false;
+  return true;
+};
+
+/** Parse one SSE data payload as an EventEnvelope; null on any mismatch. */
 export const parseEventEnvelope = (data: string): EventEnvelope | null => {
   let value: unknown;
   try {
@@ -42,13 +54,7 @@ export const parseEventEnvelope = (data: string): EventEnvelope | null => {
   } catch {
     return null;
   }
-  if (!isRecord(value)) return null;
-  if (value.schema !== 1) return null;
-  if (typeof value.id !== 'number' || !Number.isInteger(value.id) || value.id < 0) return null;
-  if (typeof value.type !== 'string' || value.type.length === 0) return null;
-  if (typeof value.at !== 'string') return null;
-  if (!isRecord(value.payload)) return null;
-  return value as unknown as EventEnvelope;
+  return isEventEnvelope(value) ? value : null;
 };
 
 /** The slice of a fetch response the stream client needs (expo/fetch and

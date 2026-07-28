@@ -11,7 +11,14 @@
  * ApiClientError. A partial or unvalidated object is never returned.
  */
 
-import type { HealthResponse, InboundMessage, Manifest } from 'agent-app-contract/types';
+import type {
+  EventEnvelope,
+  HealthResponse,
+  InboundMessage,
+  Manifest,
+} from 'agent-app-contract/types';
+
+import { isEventEnvelope } from './events';
 
 export type ApiErrorKind = 'network' | 'http' | 'shape';
 
@@ -172,6 +179,40 @@ export const postMessage = async (
     throw new ApiClientError('shape', 'POST /app/v1/messages body is not { ok, messageId }', {
       status: response.status,
       body,
+    });
+  }
+  return data;
+};
+
+/** Body of GET /app/v1/outbox — schemas/v1/outbox-page.json. Deliberately has
+ * NO nextCursor/hasMore field: the next cursor IS the `id` of the last event
+ * (single-cursor invariant), and a short/empty page means caught up. */
+export interface OutboxPage {
+  schema: 1;
+  events: EventEnvelope[];
+}
+
+const isOutboxPage = (value: unknown): value is OutboxPage =>
+  isRecord(value) &&
+  value.schema === 1 &&
+  Array.isArray(value.events) &&
+  value.events.every(isEventEnvelope);
+
+/** GET /app/v1/outbox?after=<cursor> — catch-up fetch of undelivered events
+ * (stage 9). `after` is the last event id already applied (the SAME cursor
+ * concept as the SSE `id:` field / Last-Event-ID — contract invariant 2);
+ * null asks from the beginning. Events come back ascending, strictly after
+ * the cursor. Fails closed like every call here: a page that is not a valid
+ * OutboxPage of valid EventEnvelopes rejects rather than half-applying. */
+export const getOutbox = async (
+  connection: AgentConnection,
+  after: number | null,
+): Promise<OutboxPage> => {
+  const path = after === null ? '/app/v1/outbox' : `/app/v1/outbox?after=${Math.trunc(after)}`;
+  const data = await getJson(connection, path);
+  if (!isOutboxPage(data)) {
+    throw new ApiClientError('shape', 'GET /app/v1/outbox body is not an outbox page', {
+      body: JSON.stringify(data),
     });
   }
   return data;

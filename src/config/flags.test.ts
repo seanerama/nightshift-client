@@ -4,7 +4,7 @@
  * (dark-launch default-off for shipped builds).
  */
 
-import { resolveAppsTabEnabled } from './flags';
+import { resolveAppsTabEnabled, resolveTranscriptPersistenceEnabled } from './flags';
 
 describe('resolveAppsTabEnabled', () => {
   it('explicit true enables regardless of build type', () => {
@@ -26,5 +26,25 @@ describe('resolveAppsTabEnabled', () => {
     expect(resolveAppsTabEnabled('true', false)).toBe(false);
     expect(resolveAppsTabEnabled(1, false)).toBe(false);
     expect(resolveAppsTabEnabled(null, false)).toBe(false);
+  });
+});
+
+describe('resolveTranscriptPersistenceEnabled (stage-9 kill-switch)', () => {
+  it('defaults ON when absent — the RECORDED planner deviation from the default-OFF template', () => {
+    expect(resolveTranscriptPersistenceEnabled(undefined)).toBe(true);
+  });
+
+  it('explicit true stays ON', () => {
+    expect(resolveTranscriptPersistenceEnabled(true)).toBe(true);
+  });
+
+  it('explicit false is the kill-switch', () => {
+    expect(resolveTranscriptPersistenceEnabled(false)).toBe(false);
+  });
+
+  it('non-boolean junk fails toward the default (ON for this flag)', () => {
+    expect(resolveTranscriptPersistenceEnabled('false')).toBe(true);
+    expect(resolveTranscriptPersistenceEnabled(0)).toBe(true);
+    expect(resolveTranscriptPersistenceEnabled(null)).toBe(true);
   });
 });

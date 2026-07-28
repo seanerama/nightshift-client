@@ -1,31 +1,49 @@
 /**
- * Chat session hook (stage 4): wires the tested pure pieces — transcript
- * reducer, SSE stream client, InboundMessage builder — to the active
- * connection and the React lifecycle. Deliberately thin: everything with
- * logic worth testing lives in the pure modules, because jest's node
- * environment does not render components.
+ * Chat session hook: wires the tested pure pieces — transcript reducer, SSE
+ * stream client, InboundMessage builder, and (stage 9) the durable-chat
+ * facade — to the active connection and the React lifecycle. Deliberately
+ * thin: everything with logic worth testing lives in the pure modules,
+ * because jest's node environment does not render components.
  *
  * - Stream lifecycle: foreground-only, same AppState gating pattern as the
  *   stage-3 health poller. Backgrounding stops the stream; foregrounding
- *   reconnects with the in-session Last-Event-ID cursor (kept in a ref, NOT
- *   persisted — cross-restart catch-up is the durability stage).
+ *   reconnects with the Last-Event-ID cursor.
+ * - Durability (stage 9, behind transcriptPersistenceEnabled): hydration on
+ *   connection activation (newest 500 rows + seenEventIds reconstruction),
+ *   write-through persistence as a SUBSCRIBER over the pure reducer, outbox
+ *   catch-up on session start / foreground / SSE reconnect (same reducer +
+ *   dedup path as live SSE), the persisted cursor seeding initialLastEventId,
+ *   and the offline compose queue draining on reconnect/foreground. Flag OFF
+ *   restores stage-4 in-memory behavior exactly (the facade never touches
+ *   the store).
  * - Tokens: fetched via ActiveConnection.getToken() at call/connect time,
- *   never held in state and never part of transcript or stream state.
- * - Send: optimistic insert → POST → accepted on 202 / failed on error;
- *   retry re-POSTs with the SAME messageId (dedup key, invariant 5).
+ *   never held in state and never part of transcript, stream, or ROW state.
+ * - Send: optimistic insert → POST → accepted on 202 / QUEUED when the agent
+ *   is unreachable (network error; drain re-POSTs the ORIGINAL messageId) /
+ *   failed otherwise; retry re-POSTs with the SAME messageId (invariant 5).
  */
 
 import { fetch as expoFetch } from 'expo/fetch';
 import { randomUUID } from 'expo-crypto';
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-import { postMessage } from '../api/client';
+import { ApiClientError, getOutbox, postMessage } from '../api/client';
 import { createEventStream, type EventStream, type StreamState } from '../api/events';
+import { TRANSCRIPT_PERSISTENCE_ENABLED } from '../config/transcript-persistence';
 import type { ActiveConnection } from '../connections/connections-context';
 import { shouldPoll } from '../connections/health';
+import { runCatchUp } from './catch-up';
+import { createDurableChat, type DurableChat } from './durable-chat';
 import { buildInboundMessage } from './inbound';
 import { OWNER_PERSON_ID } from './person-id';
-import { emptyTranscript, type TranscriptItem, transcriptReducer } from './transcript';
+import { getSqliteChatStore } from './sqlite-chat-store';
+import {
+  emptyTranscript,
+  type TranscriptAction,
+  type TranscriptItem,
+  type TranscriptState,
+  transcriptReducer,
+} from './transcript';
 
 export interface ChatSession {
   items: readonly TranscriptItem[];
@@ -37,22 +55,66 @@ export interface ChatSession {
 }
 
 export const useChatSession = (active: ActiveConnection | null): ChatSession => {
-  const [state, dispatch] = useReducer(transcriptReducer, emptyTranscript);
+  const [state, setState] = useState<TranscriptState>(emptyTranscript);
   const [streamState, setStreamState] = useState<StreamState>('offline');
+  // Authoritative transcript, advanced SYNCHRONOUSLY in apply() so that the
+  // write-through subscriber sees every prev→next transition even when
+  // several events land before React re-renders (useReducer could not give
+  // the subscriber a race-free prev). React state mirrors it for rendering.
+  const stateRef = useRef<TranscriptState>(emptyTranscript);
   const lastEventIdRef = useRef<number | null>(null);
-  // Ref mirror so retry() reads the latest transcript without re-binding.
-  const stateRef = useRef(state);
-  stateRef.current = state;
+  const durableRef = useRef<DurableChat | null>(null);
+  const hydrationRef = useRef<Promise<void>>(Promise.resolve());
 
   const activeId = active?.id ?? null;
   const baseUrl = active?.baseUrl ?? null;
   const getToken = active?.getToken ?? null;
 
-  // The transcript and resume cursor belong to ONE agent conversation.
-  // biome-ignore lint/correctness/useExhaustiveDependencies(activeId): the effect is deliberately KEYED to the connection identity — it must re-run (and reset) when the active connection changes, even though the id value itself is unused inside.
+  /** Dispatch through the pure reducer, then hand the transition to the
+   * durable subscriber. The reducer itself stays persistence-free. */
+  const apply = useCallback((action: TranscriptAction): void => {
+    const prev = stateRef.current;
+    const next = transcriptReducer(prev, action);
+    stateRef.current = next;
+    durableRef.current?.handle(action, prev, next);
+    if (next !== prev) setState(next);
+  }, []);
+
+  // The transcript and resume cursor belong to ONE agent conversation: reset
+  // on switch, then hydrate this connection's durable history + cursor.
   useEffect(() => {
-    dispatch({ type: 'reset' });
+    stateRef.current = emptyTranscript;
+    setState(emptyTranscript);
     lastEventIdRef.current = null;
+    durableRef.current =
+      activeId === null
+        ? null
+        : createDurableChat({
+            enabled: TRANSCRIPT_PERSISTENCE_ENABLED,
+            connectionId: activeId,
+            storeFactory: getSqliteChatStore,
+          });
+    const durable = durableRef.current;
+    const base = stateRef.current;
+    let cancelled = false;
+    hydrationRef.current = (async () => {
+      if (durable === null) return;
+      try {
+        const hydrated = await durable.hydrate();
+        if (cancelled || hydrated === null) return;
+        // Install only if nothing was applied meanwhile (a send racing the
+        // hydration read keeps the fresher in-memory state).
+        if (stateRef.current !== base) return;
+        stateRef.current = hydrated.state;
+        lastEventIdRef.current = hydrated.lastEventId;
+        setState(hydrated.state);
+      } catch {
+        // Hydration failure degrades to the stage-4 empty session.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [activeId]);
 
   useEffect(() => {
@@ -63,45 +125,137 @@ export const useChatSession = (active: ActiveConnection | null): ChatSession => 
 
     let cancelled = false;
     let stream: EventStream | null = null;
+    let starting = false;
+    let catchingUp = false;
+    let draining = false;
+
+    const connection = async () => {
+      const token = await getToken();
+      if (token === null) throw new Error('token missing from vault');
+      return { baseUrl, token };
+    };
+
+    // Outbox catch-up: same reducer + dedup path as live SSE; the final
+    // cursor becomes BOTH the persisted cursor and the Last-Event-ID seed.
+    const catchUpOnce = async () => {
+      const durable = durableRef.current;
+      if (durable === null || !durable.enabled || catchingUp) return;
+      catchingUp = true;
+      try {
+        const conn = await connection();
+        const cursor = await runCatchUp({
+          after: lastEventIdRef.current,
+          fetchPage: (after) => getOutbox(conn, after),
+          apply: (envelope) => {
+            if (cancelled) return;
+            lastEventIdRef.current = envelope.id;
+            apply({ type: 'event', envelope });
+          },
+        });
+        if (!cancelled && cursor !== null) {
+          lastEventIdRef.current = cursor;
+          durable.saveCursor(cursor);
+        }
+      } catch {
+        // Unreachable/refused: the stream's reconnect ladder owns retries;
+        // the next successful connect re-runs catch-up.
+      } finally {
+        catchingUp = false;
+      }
+    };
+
+    // Drain the offline compose queue: original messageIds, queued_at order.
+    const drainOnce = async () => {
+      const durable = durableRef.current;
+      if (durable === null || !durable.enabled || draining) return;
+      draining = true;
+      try {
+        const conn = await connection();
+        await durable.drain({
+          personId: OWNER_PERSON_ID,
+          newUuid: randomUUID,
+          post: (message) => postMessage(conn, message),
+          onSending: (row) => {
+            if (!cancelled)
+              apply({ type: 'send', messageId: row.messageId, text: row.text, at: row.queuedAt });
+          },
+          onAccepted: (messageId) => {
+            if (!cancelled) apply({ type: 'send-accepted', messageId });
+          },
+          onFailed: (messageId) => {
+            if (!cancelled) apply({ type: 'send-failed', messageId });
+          },
+          onUnreachable: (messageId) => {
+            if (!cancelled) apply({ type: 'send-queued', messageId });
+          },
+        });
+      } catch {
+        // Token/store trouble: rows stay queued for the next drain trigger.
+      } finally {
+        draining = false;
+      }
+    };
 
     const start = () => {
-      if (stream !== null || cancelled) return;
-      stream = createEventStream({
-        baseUrl,
-        getToken,
-        fetchImpl: expoFetch,
-        initialLastEventId: lastEventIdRef.current,
-        onEvent: (envelope) => {
-          lastEventIdRef.current = envelope.id;
-          if (!cancelled) dispatch({ type: 'event', envelope });
-        },
-        onStateChange: (next) => {
-          if (!cancelled) setStreamState(next);
-        },
-      });
+      if (stream !== null || starting || cancelled) return;
+      starting = true;
+      void (async () => {
+        try {
+          // Session start / foreground: hydration first (it seeds the
+          // cursor), then catch-up, then drain — all flag-gated no-ops
+          // when persistence is disabled.
+          await hydrationRef.current;
+          await catchUpOnce();
+          await drainOnce();
+        } finally {
+          starting = false;
+        }
+        if (cancelled || stream !== null) return;
+        if (!shouldPoll(AppState.currentState, true)) return; // backgrounded meanwhile
+        stream = createEventStream({
+          baseUrl,
+          getToken,
+          fetchImpl: expoFetch,
+          initialLastEventId: lastEventIdRef.current,
+          onEvent: (envelope) => {
+            lastEventIdRef.current = envelope.id;
+            if (!cancelled) apply({ type: 'event', envelope });
+          },
+          onStateChange: (next) => {
+            if (cancelled) return;
+            setStreamState(next);
+            if (next === 'connected') {
+              // SSE (re)connect: recover anything the outage skipped and
+              // release queued sends. Shared dedup makes overlap a no-op.
+              void catchUpOnce().then(drainOnce);
+            }
+          },
+        });
+      })();
     };
     const stop = () => {
       if (stream !== null) {
         lastEventIdRef.current = stream.getLastEventId();
+        durableRef.current?.saveCursor(lastEventIdRef.current);
         stream.stop();
         stream = null;
       }
     };
 
-    const apply = (appState: string) => {
+    const applyAppState = (appState: string) => {
       // Reuse the stage-3 gate: stream only while foregrounded.
       if (shouldPoll(appState, true)) start();
       else stop();
     };
-    apply(AppState.currentState);
-    const subscription = AppState.addEventListener('change', apply);
+    applyAppState(AppState.currentState);
+    const subscription = AppState.addEventListener('change', applyAppState);
 
     return () => {
       cancelled = true;
       stop();
       subscription.remove();
     };
-  }, [activeId, baseUrl, getToken]);
+  }, [activeId, baseUrl, getToken, apply]);
 
   const post = useCallback(
     async (messageId: string, text: string) => {
@@ -110,17 +264,32 @@ export const useChatSession = (active: ActiveConnection | null): ChatSession => 
         { text, personId: OWNER_PERSON_ID, messageId },
         { newUuid: randomUUID },
       );
-      dispatch({ type: 'send', messageId, text, at: message.receivedAt });
+      apply({ type: 'send', messageId, text, at: message.receivedAt });
       try {
         const token = await getToken();
         if (token === null) throw new Error('token missing from vault');
         await postMessage({ baseUrl, token }, message);
-        dispatch({ type: 'send-accepted', messageId });
-      } catch {
-        dispatch({ type: 'send-failed', messageId });
+        apply({ type: 'send-accepted', messageId });
+      } catch (err) {
+        // Unreachable agent (network error) → offline compose queue; any
+        // other failure (auth, http, shape) → the stage-4 failed/retry path.
+        // With the flag OFF enqueue() refuses, so failed is also the
+        // fallback — exactly stage-4 behavior.
+        const durable = durableRef.current;
+        const unreachable = err instanceof ApiClientError && err.kind === 'network';
+        const queued =
+          unreachable &&
+          durable !== null &&
+          (await durable.enqueue({
+            messageId,
+            text,
+            attachments: [],
+            queuedAt: message.receivedAt,
+          }));
+        apply(queued ? { type: 'send-queued', messageId } : { type: 'send-failed', messageId });
       }
     },
-    [baseUrl, getToken],
+    [baseUrl, getToken, apply],
   );
 
   const send = useCallback((text: string) => post(randomUUID(), text), [post]);
