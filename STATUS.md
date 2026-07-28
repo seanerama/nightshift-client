@@ -9,7 +9,7 @@
 
 ## Environments
 - **release:** {"tag":"v0.3.0","artifact":"nightshift-client-v0.3.0.apk @ GitHub Release v0.3.0 — multi-agent switcher (stage 10)"}
-- **device:** {"installed":"pending — v0.3.0 sideload + two-agent switcher smoke"}
+- **device:** {"installed":"v0.3.0 — switcher smoke PASS: header identity + quick switch verified, both mock agents (distinct owner ids) connected; earlier failure was a mistyped token (fail-closed as designed)"}
 
 ## Secret locations (names + on-disk locations only, never values)
 - EXPO_TOKEN @ GitHub Actions secrets (seanerama/nightshift-client); Expo account seanmahoneyai; EAS-managed Android keystore on Expo servers (backup: npx eas-cli credentials -p android)
