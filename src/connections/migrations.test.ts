@@ -206,11 +206,59 @@ describe('shipped migration list', () => {
     db.version = 2; // a stage-9-era install
 
     await runMigrations(db);
-    expect(db.version).toBe(3);
-    // ONLY the v3 statement ran.
-    expect(db.executed).toEqual([`ALTER TABLE connections ADD COLUMN person_id TEXT`]);
+    // Asserted against the list length rather than a literal, so appending a
+    // future migration does not break this test the way v4 did.
+    expect(db.version).toBe(CONNECTIONS_MIGRATIONS.length);
+    // The v3 statement ran...
+    expect(db.executed).toContain(`ALTER TABLE connections ADD COLUMN person_id TEXT`);
+    // ...and nothing from v1/v2 re-ran.
+    expect(db.executed.some((sql) => /CREATE TABLE IF NOT EXISTS connections/i.test(sql))).toBe(
+      false,
+    );
+    expect(
+      db.executed.some((sql) => /CREATE TABLE IF NOT EXISTS transcript_items/i.test(sql)),
+    ).toBe(false);
 
+    const afterFirstRun = db.executed.length;
     await runMigrations(db);
-    expect(db.executed).toHaveLength(1);
+    expect(db.executed).toHaveLength(afterFirstRun);
+  });
+});
+
+describe('migration v4 — app_settings (stage 12)', () => {
+  it('is appended, not edited: v1-v3 keep their original version numbers', () => {
+    const versions = CONNECTIONS_MIGRATIONS.map((m) => m.version);
+    expect(versions).toEqual([1, 2, 3, 4]);
+  });
+
+  it('creates the app_settings key/value table', () => {
+    const v4 = CONNECTIONS_MIGRATIONS.find((m) => m.version === 4);
+    const ddl = (v4?.statements ?? []).join('\n');
+    expect(ddl).toMatch(/CREATE TABLE IF NOT EXISTS app_settings/i);
+    expect(ddl).toMatch(/key TEXT PRIMARY KEY NOT NULL/i);
+    expect(ddl).toMatch(/value TEXT NOT NULL/i);
+  });
+
+  it('applies over a v3 database without re-running v1-v3', async () => {
+    const db = new FakeMigrationDb();
+    db.version = 3;
+    await runMigrations(db, CONNECTIONS_MIGRATIONS);
+    expect(await db.getSchemaVersion()).toBe(4);
+    expect(db.executed.some((sql) => /CREATE TABLE IF NOT EXISTS app_settings/i.test(sql))).toBe(
+      true,
+    );
+    // v1-v3 statements must not have re-run.
+    expect(db.executed.some((sql) => /CREATE TABLE IF NOT EXISTS connections/i.test(sql))).toBe(
+      false,
+    );
+    expect(db.executed.some((sql) => /ADD COLUMN person_id/i.test(sql))).toBe(false);
+  });
+
+  it('is idempotent on re-run', async () => {
+    const db = new FakeMigrationDb();
+    db.version = 4;
+    await runMigrations(db, CONNECTIONS_MIGRATIONS);
+    expect(db.executed).toHaveLength(0);
+    expect(await db.getSchemaVersion()).toBe(4);
   });
 });

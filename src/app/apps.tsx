@@ -46,6 +46,8 @@ import { CAPABILITY_MCP_APPS_UI, gateCapability } from '@/connections/capabiliti
 import { type ActiveConnection, useActiveConnection } from '@/connections/connections-context';
 import { shouldPoll } from '@/connections/health';
 import { initialize, listResources, type McpResourceDescriptor } from '@/mcp/client';
+import { usePalette } from '@/theme/theme-context';
+import type { Palette } from '@/theme/tokens';
 
 export default function AppsScreen() {
   const active = useActiveConnection();
@@ -227,6 +229,8 @@ function ResourceList({
   onOpen: (resource: McpResourceDescriptor) => void;
   onRefresh: () => void;
 }) {
+  const palette = usePalette();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
   return (
     <ScrollView
       contentContainerStyle={styles.listContent}
@@ -234,6 +238,9 @@ function ResourceList({
         <RefreshControl
           refreshing={list.refreshing}
           onRefresh={onRefresh}
+          tintColor={palette.textMuted}
+          colors={[palette.accent]}
+          progressBackgroundColor={palette.surface}
           testID="apps-refresh-control"
         />
       }
@@ -283,77 +290,79 @@ function ResourceList({
   );
 }
 
-const styles = StyleSheet.create({
-  listContent: {
-    padding: 16,
-    gap: 10,
-  },
-  heading: {
-    fontSize: 13,
-    fontWeight: '600',
-    opacity: 0.6,
-  },
-  empty: {
-    fontSize: 14,
-    opacity: 0.6,
-  },
-  staleNotice: {
-    fontSize: 13,
-    color: '#92400e',
-    backgroundColor: '#fef3c7',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  vanishedNotice: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#e0e7ff',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 10,
-  },
-  vanishedText: {
-    flex: 1,
-    fontSize: 13,
-    color: '#3730a3',
-  },
-  dismissText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#3730a3',
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#d1d5db',
-    borderRadius: 12,
-    padding: 14,
-    gap: 10,
-  },
-  rowText: {
-    flex: 1,
-    gap: 2,
-  },
-  rowTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  rowUri: {
-    fontSize: 12,
-    opacity: 0.5,
-  },
-  homeBadge: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#2563eb',
-    borderWidth: 1,
-    borderColor: '#2563eb',
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-});
+const makeStyles = (palette: Palette) =>
+  StyleSheet.create({
+    listContent: {
+      padding: 16,
+      gap: 10,
+    },
+    heading: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: palette.textMuted,
+    },
+    empty: {
+      fontSize: 14,
+      color: palette.textMuted,
+    },
+    staleNotice: {
+      fontSize: 13,
+      color: palette.warn,
+      backgroundColor: palette.warnSurface,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    vanishedNotice: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: palette.infoSurface,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      gap: 10,
+    },
+    vanishedText: {
+      flex: 1,
+      fontSize: 13,
+      color: palette.info,
+    },
+    dismissText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: palette.info,
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: palette.surface,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: palette.border,
+      borderRadius: 12,
+      padding: 14,
+      gap: 10,
+    },
+    rowText: {
+      flex: 1,
+      gap: 2,
+    },
+    rowTitle: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: palette.text,
+    },
+    rowUri: {
+      fontSize: 12,
+      color: palette.textMuted,
+    },
+    homeBadge: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: palette.accent,
+      borderWidth: 1,
+      borderColor: palette.accent,
+      borderRadius: 6,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+    },
+  });

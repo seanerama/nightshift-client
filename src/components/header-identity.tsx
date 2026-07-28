@@ -10,10 +10,12 @@
  */
 
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useConnections } from '@/connections/connections-context';
+import { usePalette } from '@/theme/theme-context';
+import type { Palette } from '@/theme/tokens';
 import { headerIdentityModel } from './header-identity-model';
 import { QuickSwitcher } from './quick-switcher';
 
@@ -26,8 +28,10 @@ export function HeaderIdentity({ fallbackTitle }: HeaderIdentityProps) {
   const { connections, active, health, setActive } = useConnections();
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const router = useRouter();
+  const palette = usePalette();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
 
-  const model = headerIdentityModel(active, health, fallbackTitle);
+  const model = headerIdentityModel(active, health, fallbackTitle, palette);
 
   if (model.kind === 'static') {
     return <Text style={styles.staticTitle}>{model.title}</Text>;
@@ -54,33 +58,36 @@ export function HeaderIdentity({ fallbackTitle }: HeaderIdentityProps) {
         visible={switcherOpen}
         connections={connections}
         onSelect={(id) => void setActive(id)}
-        onManage={() => router.navigate('/')}
+        onManage={() => router.navigate('/connections')}
         onClose={() => setSwitcherOpen(false)}
       />
     </>
   );
 }
 
-const styles = StyleSheet.create({
-  staticTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-  },
-  identity: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 4,
-    paddingVertical: 4,
-  },
-  dot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  title: {
-    fontSize: 17,
-    fontWeight: '600',
-    maxWidth: 220,
-  },
-});
+const makeStyles = (palette: Palette) =>
+  StyleSheet.create({
+    staticTitle: {
+      fontSize: 17,
+      fontWeight: '600',
+      color: palette.text,
+    },
+    identity: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingHorizontal: 4,
+      paddingVertical: 4,
+    },
+    dot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+    },
+    title: {
+      fontSize: 17,
+      fontWeight: '600',
+      maxWidth: 220,
+      color: palette.text,
+    },
+  });

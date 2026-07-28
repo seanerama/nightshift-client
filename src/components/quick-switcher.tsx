@@ -8,9 +8,12 @@
  * the caller, keeping this component presentational and testable).
  */
 
+import { useMemo } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { ConnectionRecord } from '@/connections/types';
+import { usePalette } from '@/theme/theme-context';
+import type { Palette } from '@/theme/tokens';
 import { buildSwitcherRows, type SwitcherRow, shouldDispatchSwitch } from './quick-switcher-model';
 
 export interface QuickSwitcherProps {
@@ -30,6 +33,8 @@ export function QuickSwitcher({
   onManage,
   onClose,
 }: QuickSwitcherProps) {
+  const palette = usePalette();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
   const rows = buildSwitcherRows(connections);
 
   const pressRow = (row: SwitcherRow) => {
@@ -86,66 +91,69 @@ export function QuickSwitcher({
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
-  sheetWrapper: {
-    // Cap the sheet; long lists scroll inside.
-    maxHeight: '70%',
-  },
-  sheetScroll: {
-    flexGrow: 0,
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-  },
-  sheet: {
-    padding: 20,
-    gap: 8,
-  },
-  heading: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#fff',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#d1d5db',
-    borderRadius: 12,
-    padding: 14,
-  },
-  rowText: {
-    flex: 1,
-    gap: 2,
-  },
-  rowName: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  rowUrl: {
-    fontSize: 12,
-    opacity: 0.5,
-  },
-  activeCheck: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#2563eb',
-  },
-  manageRow: {
-    marginTop: 8,
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-  manageText: {
-    color: '#2563eb',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-});
+const makeStyles = (palette: Palette) =>
+  StyleSheet.create({
+    backdrop: {
+      flex: 1,
+      justifyContent: 'flex-end',
+      backgroundColor: 'rgba(0,0,0,0.4)',
+    },
+    sheetWrapper: {
+      // Cap the sheet; long lists scroll inside.
+      maxHeight: '70%',
+    },
+    sheetScroll: {
+      flexGrow: 0,
+      backgroundColor: palette.surface,
+      borderTopLeftRadius: 16,
+      borderTopRightRadius: 16,
+    },
+    sheet: {
+      padding: 20,
+      gap: 8,
+    },
+    heading: {
+      fontSize: 18,
+      fontWeight: '600',
+      marginBottom: 8,
+      color: palette.text,
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      backgroundColor: palette.surface,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: palette.border,
+      borderRadius: 12,
+      padding: 14,
+    },
+    rowText: {
+      flex: 1,
+      gap: 2,
+    },
+    rowName: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: palette.text,
+    },
+    rowUrl: {
+      fontSize: 12,
+      color: palette.textMuted,
+    },
+    activeCheck: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: palette.accent,
+    },
+    manageRow: {
+      marginTop: 8,
+      alignItems: 'center',
+      paddingVertical: 10,
+    },
+    manageText: {
+      color: palette.accent,
+      fontWeight: '600',
+      fontSize: 14,
+    },
+  });

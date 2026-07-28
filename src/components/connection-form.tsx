@@ -6,7 +6,7 @@
  * form or any message; the person id is NOT a secret and renders plainly.
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -22,6 +22,8 @@ import {
 import { ApiClientError } from '@/api/client';
 import { OWNER_PERSON_ID } from '@/chat/person-id';
 import type { ConnectionRecord } from '@/connections/types';
+import { usePalette } from '@/theme/theme-context';
+import type { Palette } from '@/theme/tokens';
 
 export interface ConnectionFormProps {
   visible: boolean;
@@ -60,6 +62,8 @@ export function ConnectionForm({
   onDelete,
   onClose,
 }: ConnectionFormProps) {
+  const palette = usePalette();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
   const [baseUrl, setBaseUrl] = useState(existing?.baseUrl ?? '');
   const [token, setToken] = useState('');
   // Stage 10: optional per-connection owner person id. NOT a secret (plain
@@ -136,6 +140,7 @@ export function ConnectionForm({
             value={baseUrl}
             onChangeText={setBaseUrl}
             placeholder="http://100.64.0.7:8787"
+            placeholderTextColor={palette.textMuted}
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="url"
@@ -150,6 +155,7 @@ export function ConnectionForm({
               value={token}
               onChangeText={setToken}
               placeholder={existing ? 'Re-enter token' : 'Connection token'}
+              placeholderTextColor={palette.textMuted}
               secureTextEntry={!showToken}
               autoCapitalize="none"
               autoCorrect={false}
@@ -173,6 +179,7 @@ export function ConnectionForm({
             value={personId}
             onChangeText={setPersonId}
             placeholder={OWNER_PERSON_ID}
+            placeholderTextColor={palette.textMuted}
             autoCapitalize="none"
             autoCorrect={false}
             editable={!busy}
@@ -192,7 +199,7 @@ export function ConnectionForm({
             </Pressable>
             <Pressable style={styles.button} onPress={save} disabled={busy}>
               {busy ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={palette.textInverse} />
               ) : (
                 <Text style={styles.buttonText}>{existing ? 'Re-handshake & save' : 'Save'}</Text>
               )}
@@ -210,101 +217,104 @@ export function ConnectionForm({
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
-  // The scroll container carries the sheet chrome; flexGrow 0 keeps it
-  // bottom-anchored (backdrop is justify-end) and lets it cap at the space
-  // left above the keyboard, at which point the content scrolls.
-  sheetScroll: {
-    flexGrow: 0,
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-  },
-  sheet: {
-    padding: 20,
-    gap: 8,
-  },
-  heading: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  label: {
-    fontSize: 12,
-    fontWeight: '500',
-    opacity: 0.7,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-  },
-  tokenRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  tokenInput: {
-    flex: 1,
-  },
-  tokenToggle: {
-    paddingHorizontal: 8,
-    paddingVertical: 10,
-  },
-  tokenToggleText: {
-    color: '#2563eb',
-    fontWeight: '600',
-    fontSize: 13,
-  },
-  help: {
-    fontSize: 12,
-    opacity: 0.6,
-    lineHeight: 16,
-  },
-  error: {
-    color: '#dc2626',
-    fontSize: 13,
-    marginTop: 4,
-  },
-  actions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 12,
-    marginTop: 12,
-  },
-  button: {
-    backgroundColor: '#2563eb',
-    borderRadius: 8,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    minWidth: 96,
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  secondary: {
-    backgroundColor: '#e5e7eb',
-  },
-  secondaryText: {
-    color: '#111827',
-    fontWeight: '600',
-  },
-  deleteLink: {
-    marginTop: 16,
-    alignItems: 'center',
-  },
-  deleteText: {
-    color: '#dc2626',
-    fontWeight: '500',
-  },
-});
+const makeStyles = (palette: Palette) =>
+  StyleSheet.create({
+    backdrop: {
+      flex: 1,
+      justifyContent: 'flex-end',
+      backgroundColor: 'rgba(0,0,0,0.4)',
+    },
+    // The scroll container carries the sheet chrome; flexGrow 0 keeps it
+    // bottom-anchored (backdrop is justify-end) and lets it cap at the space
+    // left above the keyboard, at which point the content scrolls.
+    sheetScroll: {
+      flexGrow: 0,
+      backgroundColor: palette.surface,
+      borderTopLeftRadius: 16,
+      borderTopRightRadius: 16,
+    },
+    sheet: {
+      padding: 20,
+      gap: 8,
+    },
+    heading: {
+      fontSize: 18,
+      fontWeight: '600',
+      marginBottom: 8,
+      color: palette.text,
+    },
+    label: {
+      fontSize: 12,
+      fontWeight: '500',
+      color: palette.textMuted,
+    },
+    input: {
+      borderWidth: 1,
+      borderColor: palette.border,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 15,
+      color: palette.text,
+    },
+    tokenRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    tokenInput: {
+      flex: 1,
+    },
+    tokenToggle: {
+      paddingHorizontal: 8,
+      paddingVertical: 10,
+    },
+    tokenToggleText: {
+      color: palette.accent,
+      fontWeight: '600',
+      fontSize: 13,
+    },
+    help: {
+      fontSize: 12,
+      color: palette.textMuted,
+      lineHeight: 16,
+    },
+    error: {
+      color: palette.danger,
+      fontSize: 13,
+      marginTop: 4,
+    },
+    actions: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      gap: 12,
+      marginTop: 12,
+    },
+    button: {
+      backgroundColor: palette.accent,
+      borderRadius: 8,
+      paddingHorizontal: 18,
+      paddingVertical: 10,
+      minWidth: 96,
+      alignItems: 'center',
+    },
+    buttonText: {
+      color: palette.textInverse,
+      fontWeight: '600',
+    },
+    secondary: {
+      backgroundColor: palette.surfaceSubtle,
+    },
+    secondaryText: {
+      color: palette.text,
+      fontWeight: '600',
+    },
+    deleteLink: {
+      marginTop: 16,
+      alignItems: 'center',
+    },
+    deleteText: {
+      color: palette.danger,
+      fontWeight: '500',
+    },
+  });

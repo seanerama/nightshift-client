@@ -1,5 +1,6 @@
 /** Unit: health state machine transitions and foreground poll gating. */
 
+import { paletteFor } from '../theme/tokens';
 import { type HealthState, healthColor, reduceHealth, shouldPoll } from './health';
 
 const ALL_STATES: HealthState[] = ['unknown', 'ok', 'degraded', 'unreachable'];
@@ -49,7 +50,7 @@ describe('shouldPoll (foreground-only)', () => {
 
 describe('healthColor', () => {
   it('maps each state to a distinct dot color', () => {
-    const colors = ALL_STATES.map(healthColor);
+    const colors = ALL_STATES.map((state) => healthColor(state, paletteFor('light')));
     expect(new Set(colors).size).toBe(ALL_STATES.length);
   });
 });

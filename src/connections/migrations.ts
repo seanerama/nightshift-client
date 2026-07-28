@@ -101,6 +101,21 @@ export const CONNECTIONS_MIGRATIONS: readonly Migration[] = [
     version: 3,
     statements: [`ALTER TABLE connections ADD COLUMN person_id TEXT`],
   },
+  {
+    // Stage 12: app-level (NOT per-connection) settings, starting with the
+    // theme preference. Before this there was nowhere to put a preference that
+    // belongs to the app rather than to an agent — the only stores were this
+    // database's connection-scoped tables and the secure token vault, and a
+    // non-secret must never go in the vault. A plain key/value table keeps the
+    // next such setting from needing another migration.
+    version: 4,
+    statements: [
+      `CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY NOT NULL,
+        value TEXT NOT NULL
+      )`,
+    ],
+  },
 ];
 
 export class MigrationError extends Error {

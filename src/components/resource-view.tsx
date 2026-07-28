@@ -15,7 +15,7 @@
  */
 
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WebView from 'react-native-webview';
 
@@ -26,6 +26,8 @@ import {
   readUiResourceHtml,
   toolResultText,
 } from '@/mcp/client';
+import { usePalette, useTheme } from '@/theme/theme-context';
+import type { Palette } from '@/theme/tokens';
 import { deriveAllowlist } from '@/ui-bridge/allowlist';
 import { type BridgeSession, createBridgeSession } from '@/ui-bridge/bridge';
 import { reduceResourceView } from '@/ui-bridge/fallback';
@@ -42,7 +44,8 @@ export function ResourceView({ connection, resource, onClose }: ResourceViewProp
   const [state, dispatch] = useReducer(reduceResourceView, { phase: 'loading' });
   const [lastToolResult, setLastToolResult] = useState<string | null>(null);
   const webviewRef = useRef<WebView>(null);
-  const scheme = useColorScheme();
+  const { scheme, palette } = useTheme();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
   const insets = useSafeAreaInsets();
 
   // One bridge session per opened resource; allowlist derived once from the
@@ -88,7 +91,7 @@ export function ResourceView({ connection, resource, onClose }: ResourceViewProp
   useEffect(() => {
     if (!rendering) return;
     session.pushTheme({
-      scheme: scheme === 'dark' ? 'dark' : 'light',
+      scheme,
       insets: { top: insets.top, right: insets.right, bottom: insets.bottom, left: insets.left },
     });
   }, [rendering, session, scheme, insets.top, insets.right, insets.bottom, insets.left]);
@@ -134,6 +137,8 @@ export function ResourceView({ connection, resource, onClose }: ResourceViewProp
 }
 
 function Header({ title, onClose }: { title: string; onClose: () => void }) {
+  const palette = usePalette();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
   return (
     <View style={styles.header}>
       <Pressable onPress={onClose} testID="apps-back" hitSlop={8}>
@@ -146,39 +151,44 @@ function Header({ title, onClose }: { title: string; onClose: () => void }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#d1d5db',
-  },
-  back: {
-    fontSize: 15,
-    color: '#2563eb',
-    fontWeight: '600',
-  },
-  headerTitle: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  webview: {
-    flex: 1,
-  },
-  loading: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+const makeStyles = (palette: Palette) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: palette.background,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      backgroundColor: palette.surface,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: palette.border,
+    },
+    back: {
+      fontSize: 15,
+      color: palette.accent,
+      fontWeight: '600',
+    },
+    headerTitle: {
+      flex: 1,
+      fontSize: 15,
+      fontWeight: '600',
+      color: palette.text,
+    },
+    webview: {
+      flex: 1,
+    },
+    loading: {
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: palette.background,
+    },
+  });
