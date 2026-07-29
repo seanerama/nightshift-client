@@ -38,16 +38,26 @@ export const shouldPoll = (appState: string, hasActiveConnection: boolean): bool
 
 export const HEALTH_POLL_INTERVAL_MS = 30_000;
 
-export const healthColor = (state: HealthState): string => {
+/** Health dot colours come from the active palette (stage 12) rather than
+ * being spelled here — the dot has to be legible in both schemes, and the
+ * palette is the single place a scheme is defined. */
+export interface HealthPalette {
+  healthOk: string;
+  healthDegraded: string;
+  healthUnreachable: string;
+  healthUnknown: string;
+}
+
+export const healthColor = (state: HealthState, palette: HealthPalette): string => {
   switch (state) {
     case 'ok':
-      return '#22c55e';
+      return palette.healthOk;
     case 'degraded':
-      return '#f59e0b';
+      return palette.healthDegraded;
     case 'unreachable':
-      return '#ef4444';
+      return palette.healthUnreachable;
     case 'unknown':
-      return '#9ca3af';
+      return palette.healthUnknown;
   }
 };
 

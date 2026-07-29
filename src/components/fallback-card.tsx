@@ -6,9 +6,12 @@
  * stage-4 splitter — a broken resource degrades, it never takes the app down.
  */
 
+import { useMemo } from 'react';
 import { Platform, ScrollView, StyleSheet, Text } from 'react-native';
 
 import { markdownToBlocks } from '@/chat/markdown';
+import { usePalette } from '@/theme/theme-context';
+import type { Palette } from '@/theme/tokens';
 import { type FallbackReason, fallbackTitle } from '@/ui-bridge/fallback';
 
 export function FallbackCard({
@@ -21,6 +24,8 @@ export function FallbackCard({
   /** Text of the most recent successful tools/call result, when any. */
   lastToolResult: string | null;
 }) {
+  const palette = usePalette();
+  const styles = useMemo(() => makeStyles(palette), [palette]);
   return (
     <ScrollView
       style={styles.container}
@@ -47,37 +52,41 @@ export function FallbackCard({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  content: {
-    padding: 16,
-    gap: 8,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#b91c1c',
-  },
-  detail: {
-    fontSize: 14,
-    opacity: 0.8,
-  },
-  resultHeading: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginTop: 12,
-    opacity: 0.7,
-  },
-  paragraph: {
-    fontSize: 14,
-  },
-  code: {
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    fontSize: 12,
-    backgroundColor: '#f3f4f6',
-    borderRadius: 6,
-    padding: 8,
-  },
-});
+const makeStyles = (palette: Palette) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: palette.background,
+    },
+    content: {
+      padding: 16,
+      gap: 8,
+    },
+    title: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: palette.danger,
+    },
+    detail: {
+      fontSize: 14,
+      color: palette.textMuted,
+    },
+    resultHeading: {
+      fontSize: 13,
+      fontWeight: '600',
+      marginTop: 12,
+      color: palette.textMuted,
+    },
+    paragraph: {
+      fontSize: 14,
+      color: palette.text,
+    },
+    code: {
+      fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+      fontSize: 12,
+      color: palette.text,
+      backgroundColor: palette.surfaceMuted,
+      borderRadius: 6,
+      padding: 8,
+    },
+  });

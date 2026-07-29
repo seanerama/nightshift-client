@@ -8,7 +8,12 @@
  * title, non-interactive.
  */
 
-import { type HealthState, healthColor, healthLabel } from '../connections/health';
+import {
+  type HealthPalette,
+  type HealthState,
+  healthColor,
+  healthLabel,
+} from '../connections/health';
 
 export type HeaderIdentityModel =
   /** No active connection: the static title, not pressable, no dot. */
@@ -20,12 +25,13 @@ export const headerIdentityModel = (
   active: { agentName: string } | null,
   health: HealthState,
   fallbackTitle: string,
+  palette: HealthPalette,
 ): HeaderIdentityModel => {
   if (active === null) return { kind: 'static', title: fallbackTitle };
   return {
     kind: 'identity',
     title: active.agentName,
-    dotColor: healthColor(health),
+    dotColor: healthColor(health, palette),
     healthLabel: healthLabel(health),
   };
 };
