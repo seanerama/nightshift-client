@@ -36,6 +36,12 @@ describe('palettes', () => {
     expect(differing.length).toBe(Object.keys(light).length);
   });
 
+  it('scrims differ by scheme — the same 40% black barely registers over a dark page', () => {
+    // Not a cosmetic assertion: a scrim that does not separate the sheet from
+    // the page is a usability bug in dark mode specifically.
+    expect(paletteFor('dark').scrim).not.toBe(paletteFor('light').scrim);
+  });
+
   it('paletteFor returns the matching palette', () => {
     expect(paletteFor('light')).toBe(PALETTES.light);
     expect(paletteFor('dark')).toBe(PALETTES.dark);

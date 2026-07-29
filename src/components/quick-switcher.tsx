@@ -96,7 +96,7 @@ const makeStyles = (palette: Palette) =>
     backdrop: {
       flex: 1,
       justifyContent: 'flex-end',
-      backgroundColor: 'rgba(0,0,0,0.4)',
+      backgroundColor: palette.scrim,
     },
     sheetWrapper: {
       // Cap the sheet; long lists scroll inside.

@@ -222,7 +222,7 @@ const makeStyles = (palette: Palette) =>
     backdrop: {
       flex: 1,
       justifyContent: 'flex-end',
-      backgroundColor: 'rgba(0,0,0,0.4)',
+      backgroundColor: palette.scrim,
     },
     // The scroll container carries the sheet chrome; flexGrow 0 keeps it
     // bottom-anchored (backdrop is justify-end) and lets it cap at the space

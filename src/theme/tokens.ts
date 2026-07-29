@@ -44,6 +44,13 @@ export interface Palette {
   info: string;
   infoSurface: string;
 
+  /**
+   * Dimming layer behind a modal sheet. Scheme-specific on purpose: the same
+   * 40% black that separates a sheet from a light page barely registers over an
+   * already-dark one, so dark uses a heavier scrim.
+   */
+  scrim: string;
+
   /** Connection health dots (src/connections/health.ts). */
   healthOk: string;
   healthDegraded: string;
@@ -79,6 +86,8 @@ const light: Palette = {
   info: '#3730a3',
   infoSurface: '#e0e7ff',
 
+  scrim: 'rgba(0, 0, 0, 0.4)',
+
   healthOk: '#22c55e',
   healthDegraded: '#f59e0b',
   healthUnreachable: '#ef4444',
@@ -110,6 +119,8 @@ const dark: Palette = {
   successSurface: '#12331f',
   info: '#c7d2fe',
   infoSurface: '#252a4d',
+
+  scrim: 'rgba(0, 0, 0, 0.6)',
 
   healthOk: '#4ade80',
   healthDegraded: '#fbbf24',

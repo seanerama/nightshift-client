@@ -52,6 +52,13 @@ connections and transcripts.
    which is the bug this stage exists to fix. Now set the app to **Light** with
    the **phone in Dark** and confirm the resource renders light.
 
+   **Also note the status bar in this step.** Theming it is deferred (see the
+   stage spec), and `app.json` keeps `userInterfaceStyle: "automatic"`, so the
+   status bar follows the **device** while the header follows the **app**. With
+   app-Dark/device-Light you may get dark status-bar icons sitting on the dark
+   header. Record whether they are actually hard to read — that decides whether
+   the deferral needs to become a chore stage.
+
 9. **Copy a message.** Long-press one of **your own** messages → brief
    "Copied" → paste into any other app → exact text. Repeat on an **agent**
    reply that contains a code block → the pasted text includes the raw
@@ -75,6 +82,7 @@ connections and transcripts.
 - Upgrade or fresh install? (step 2 only applies to upgrades):
 - Step 4 — any screen that stayed light or flashed white? (list them):
 - Step 8 — resource followed the APP setting in both directions? (y/n):
+- Step 8 — status bar icons legible on the dark header? (y/n + which combination):
 - Step 9 — agent code-block copy included the fences? (y/n):
 - Step 11 — landed on Connections? (y/n):
 - Result: PASS / FAIL + notes
