@@ -72,7 +72,7 @@ jest.mock('@/chat/use-chat-session', () => ({
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const ChatScreen = require('./index').default as () => React.ReactElement;
+const ChatScreen = require('../app/index').default as () => React.ReactElement;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { ThemeProvider } = require('@/theme/theme-context');
 // eslint-disable-next-line @typescript-eslint/no-require-imports

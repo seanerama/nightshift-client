@@ -67,7 +67,7 @@ jest.mock('@/mcp/client', () => ({
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { listResources } = require('@/mcp/client') as { listResources: jest.Mock };
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const appsModule = require('./apps') as {
+const appsModule = require('../app/apps') as {
   default: () => React.ReactElement | null;
   AppsBrowser: (props: { connection: ActiveConnection }) => React.ReactElement;
 };
