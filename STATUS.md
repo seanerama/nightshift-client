@@ -3,13 +3,13 @@
 > Runtime/ops truth (framework-spec §4.6). Generated from `.verity/runtime.json`
 > by the Release/Deploy Operator. Secret LOCATIONS only — never values.
 
-**Live version:** 0.3.0
+**Live version:** 0.5.0
 **Deployed at:** (not deployed)
-**Rollback from:** v0.2.0 APK on its GitHub Release (migration v3 additive — rollback-safe)
+**Rollback from:** v0.4.0 APK on its GitHub Release — BUT v0.4.0 carries the crashing /apps.test tab (#43). Rolling back reintroduces the defect v0.5.0 fixes. v0.3.0 is the last release without it. No schema change since v0.4.0; migration v4 (app_settings) is additive, so a rollback is schema-safe.
 
 ## Environments
-- **release:** {"tag":"v0.3.0","artifact":"nightshift-client-v0.3.0.apk @ GitHub Release v0.3.0 — multi-agent switcher (stage 10)"}
-- **device:** {"installed":"v0.3.0 — switcher smoke PASS: header identity + quick switch verified, both mock agents (distinct owner ids) connected; earlier failure was a mistyped token (fail-closed as designed)"}
+- **release:** {"tag":"v0.5.0","artifact":"nightshift-client-v0.5.0.apk @ GitHub Release v0.5.0 (105.5 MB) — crashing-tab fix (stage 15) + shell polish (stage 12)","build":"GitHub Actions run 30465470686, 128 min end-to-end (EAS queue; no Expo incident — status.expo.dev showed all-operational throughout)"}
+- **device:** {"installed":"UNKNOWN — NOT VERIFIED. v0.5.0 has 0 downloads: built and published, not installed, not smoked.","prior":"v0.3.0 was the last release with a recorded smoke PASS. v0.4.0 was released 2026-07-28 and NEVER smoke-verified; it shipped a phantom /apps.test tab that crashed on tap (#43), which the owner hit in the field. Whether they were running the v0.4.0 APK or a dev build of that code is not established, so the previously-recorded 'device: v0.3.0' is not asserted here.","required_smoke":"docs/ui-smoke/stage-11-live-apps.md step 0 (exactly four tabs, none crashing — the direct check on #43) AND docs/ui-smoke/stage-12-shell.md (12 steps; step 8 is the app-Dark/device-Light resource case). Stage 12's needs no second agent; stage 11's full script does."}
 
 ## Secret locations (names + on-disk locations only, never values)
 - EXPO_TOKEN @ GitHub Actions secrets (seanerama/nightshift-client); Expo account seanmahoneyai; EAS-managed Android keystore on Expo servers (backup: npx eas-cli credentials -p android)
