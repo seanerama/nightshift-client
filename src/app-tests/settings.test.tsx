@@ -18,7 +18,7 @@ jest.mock('react-native/Libraries/Utilities/useColorScheme', () => ({
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const SettingsScreen = require('./settings').default as () => React.ReactElement;
+const SettingsScreen = require('../app/settings').default as () => React.ReactElement;
 
 const flush = async () => {
   await act(async () => {

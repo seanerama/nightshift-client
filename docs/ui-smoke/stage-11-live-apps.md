@@ -28,6 +28,16 @@ is the closest available stand-in for a mid-session publish until the upstream
 
 ## Steps
 
+0. **THE TAB BAR IS EXACTLY WHAT IT SHOULD BE.** Before anything else, look at
+   the tab bar: **exactly four tabs — Chat, Apps, Connections, Settings — and
+   nothing else.** Tap every one; none may crash.
+
+   This step exists because v0.4.0 shipped a phantom `apps.test` tab that
+   crashed on tap (issue #43): `src/app/` is expo-router's routes directory, so
+   a stray file there becomes a route. This doc governs the released build and
+   never asserted the app's own navigation, which is why the smoke would not
+   have caught it even if it had been run. Assert what the user sees first.
+
 1. **Baseline.** Connect to the agent, open the Apps tab → the list renders
    (against the mock: one row, `ui://mock-agent/home@v1`). There is **no
    "Refresh" text button** any more; the gesture replaced it.
@@ -105,6 +115,7 @@ is the closest available stand-in for a mid-session publish until the upstream
 ## Record
 
 - App version / APK:
+- Step 0 — exactly four tabs, none crashing? (y/n + list what you saw):
 - Agent + capabilities used:
 - Trigger observed at each of steps 2, 3, 6, 7, 9:
 - Step 7 — did the open resource survive, and was an action in flight? (y/n)
