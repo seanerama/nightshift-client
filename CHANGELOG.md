@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0
+
+### Fixes
+- move unit tests out of src/app/ so they stop becoming crashing tabs (stage 15) (#45)
+
+### Other
+- docs: stage 15 spec + assessment — test files in src/app/ become crashing tabs (refs #43) (#44)
+- [stage 12] Shell polish: tab order, theme tokens with Light/Dark/System, copy message (#40)
+- docs: architect pass — shell polish, attachments, generated tool UI (ADRs 0008-0010) (#36)
+
 ## 0.4.0
 
 ### Chores
